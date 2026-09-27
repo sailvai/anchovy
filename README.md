@@ -6,4 +6,6 @@ Free, open-source meeting notes for Apple Silicon Macs. Record your microphone a
 
 The app is not available for download yet. The product spec is being built in private, and the source will land in this repository.
 
+Machine setup for contributors is in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 Sailvai is the company. Anchovy is its first product.
