@@ -45,6 +45,14 @@ shell "force-with-lease=ref" deny 'git push --force-with-lease=step-01 origin st
 shell "force-if-includes" deny 'git push --force-if-includes origin step-01'
 shell "force with git -C before push" deny 'git -C . push -f origin step-01'
 shell "main with git -c before push" deny 'git -c push.default=current push origin main'
+shell "main in double quotes" deny 'git push origin "main"'
+shell "main in single quotes" deny "git push origin 'main'"
+shell "quoted HEAD:main" deny 'git push origin "HEAD:refs/heads/main"'
+shell "main split by quotes" deny "git push origin ma'in'"
+shell "main with a backslash" deny 'git push origin ma\in'
+shell "quoted force flag" deny 'git push "-f" origin step-01'
+shell "quoted plus refspec" deny "git push origin '+step-01'"
+shell "quoted branch" allow 'git push -u origin "step-01"'
 shell "set upstream with -u" allow 'git push -u origin step-01'
 shell "follow tags" allow 'git push --follow-tags origin step-01'
 shell "dry run -nu" allow 'git push -nu origin step-01'

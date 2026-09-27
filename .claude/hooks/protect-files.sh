@@ -79,6 +79,9 @@ if [[ -n $command ]]; then
   # the same line does not count as a push to main. Git's own options may
   # come before "push" ("git -C dir push").
   while IFS= read -r push; do
+    # The shell removes quotes and backslashes before git sees the
+    # arguments, so origin "main" and origin 'ma'in both mean main.
+    push=$(tr -d "\"'\\\\" <<<"$push")
     # Force: -f alone or inside a cluster (-fu), --force and its variants,
     # or a +refspec.
     if grep -Eq '[[:space:]](-[[:alnum:]]*f[[:alnum:]]*|--force[[:alnum:]-]*)(=[^[:space:]]*)?([[:space:]]|$)|[[:space:]]\+[^[:space:]]' <<<"$push"; then
