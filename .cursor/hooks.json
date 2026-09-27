@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeReadFile": [{ "command": ".claude/hooks/protect-files.sh" }],
+    "beforeShellExecution": [{ "command": ".claude/hooks/protect-files.sh" }],
+    "afterFileEdit": [{ "command": ".claude/hooks/format-edited.sh" }]
+  }
+}

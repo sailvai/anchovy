@@ -4,8 +4,21 @@ Free, open-source meeting notes for Apple Silicon Macs. Record your microphone a
 
 ![Anchovy](brand/anchovy.png)
 
-The app is not available for download yet. The product spec is being built in private, and the source will land in this repository.
+The app is not available for download yet. Right now the repository builds an empty Anchovy window; features arrive step by step.
 
-Machine setup for contributors is in [CONTRIBUTING.md](CONTRIBUTING.md).
+## Run it on your Mac
+
+You need an Apple Silicon Mac with macOS 14.4 or later, plus the tools listed in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+```sh
+npm install
+npm run tauri dev
+```
+
+To run every check, as CI does:
+
+```sh
+npm run verify
+```
 
 Sailvai is the company. Anchovy is its first product.
