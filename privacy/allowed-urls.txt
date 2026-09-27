@@ -1,0 +1,17 @@
+# External addresses allowed in code and configuration, one prefix per line.
+# Anchovy goes online only to download models from the shipped list and to
+# check for updates. Adding a line here needs Joshua's review (CODEOWNERS).
+
+# Editor schema hint in tauri.conf.json; the app never fetches it.
+https://schema.tauri.app/config/2
+
+# Crate metadata in src-tauri/Cargo.toml; the app never fetches it.
+https://github.com/sailvai/anchovy
+
+# Apple's plist DOCTYPE; the app never fetches it.
+http://www.apple.com/DTDs/PropertyList-1.0.dtd
+
+# Local addresses: the Vite dev server and Tauri's own IPC and asset protocols.
+http://localhost:
+http://ipc.localhost
+http://asset.localhost

@@ -1,0 +1,40 @@
+# cargo-deny configuration, and the single license allowlist for Rust and npm
+# dependencies and for models.json. Changing it needs Joshua's review.
+
+[graph]
+targets = ["aarch64-apple-darwin"]
+
+[licenses]
+confidence-threshold = 0.9
+unused-allowed-license = "allow"
+allow = [
+  "MIT",
+  "MIT-0",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "0BSD",
+  "Zlib",
+  "Unicode-3.0",
+  "BSL-1.0",
+  "CC0-1.0",
+  "OFL-1.1",
+  "MPL-2.0",
+  # npm build tools only: lru-cache, minimatch.
+  "BlueOak-1.0.0",
+  # npm build tools only: caniuse-lite browser data.
+  "CC-BY-4.0",
+]
+
+[bans]
+multiple-versions = "allow"
+wildcards = "allow"
+
+[advisories]
+ignore = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
