@@ -1,0 +1,33 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+
+/* Quiet grays; color is reserved for state. Dark mode follows macOS. */
+@theme {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --color-surface: #ffffff;
+  --color-surface-raised: #f7f7f8;
+  --color-line: #e6e6e9;
+  --color-text: #18181b;
+  --color-muted: #71717a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-surface: #111113;
+    --color-surface-raised: #18181b;
+    --color-line: #27272a;
+    --color-text: #f4f4f5;
+    --color-muted: #a1a1aa;
+  }
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
