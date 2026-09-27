@@ -19,9 +19,17 @@ decision() { # decision expected hook-input label
 shell() { # shell label expected command
   decision "$2" "$(jq -n --arg c "$3" '{hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: {command: $c}}')" "$1"
 }
-file() { # file label expected tool path
-  decision "$2" "$(jq -n --arg t "$3" --arg f "$PWD/$4" '{hook_event_name: "PreToolUse", tool_name: $t, tool_input: {file_path: $f}}')" "$1"
+raw_file() { # raw_file label expected tool path-as-given
+  decision "$2" "$(jq -n --arg t "$3" --arg f "$4" '{hook_event_name: "PreToolUse", tool_name: $t, tool_input: {file_path: $f}}')" "$1"
 }
+file() { # file label expected tool repo-path
+  raw_file "$1" "$2" "$3" "$PWD/$4"
+}
+
+links=$(mktemp -d)
+trap 'rm -rf "$links"' EXIT
+ln -s "$PWD/src-tauri" "$links/src-tauri"
+ln -s "$PWD/AGENTS.md" "$links/rules.md"
 
 shell "push branch, then gh --base main" allow 'git push -u origin step-00 2>&1 | tail -2; gh pr create --base main'
 shell "push to main" deny 'git push origin main'
@@ -45,6 +53,20 @@ file "edit App.tsx" allow Edit src/app/App.tsx
 file "read AGENTS.md" allow Read AGENTS.md
 file "read a secrets file" deny Read .env
 file "read a local secrets file" deny Read .env.local
+
+# Different spellings of a protected path must still ask.
+file "protected path through .." ask Edit src/../src-tauri/Entitlements.plist
+file "protected path through ./" ask Edit ./AGENTS.md
+file "new protected file through .." ask Write src/app/../../.claude/skills/new/SKILL.md
+raw_file "relative protected path" ask Edit src-tauri/./capabilities/default.json
+file "protected path in other case" ask Edit src-tauri/ENTITLEMENTS.PLIST
+file "protected folder in other case" ask Write .Claude/settings.json
+raw_file "symlinked folder into the repo" ask Edit "$links/src-tauri/tauri.conf.json"
+raw_file "symlink to a protected file" ask Edit "$links/rules.md"
+file "unprotected path through .." allow Edit src-tauri/../src/app/App.tsx
+shell "sed after cd" ask 'cd src-tauri && sed -i "" s/a/b/ Entitlements.plist'
+shell "rm a protected folder" ask 'rm -rf .claude'
+shell "redirect from check-privacy.mjs" allow 'node scripts/check-privacy.mjs > log.txt'
 
 decision deny "$(jq -n --arg f "$PWD/.env" '{hook_event_name: "beforeReadFile", file_path: $f}')" "Cursor: read a secrets file"
 decision deny "$(jq -n '{hook_event_name: "beforeShellExecution", command: "wget example.com"}')" "Cursor: wget"

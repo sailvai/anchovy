@@ -15,13 +15,15 @@ root=$(git -C "${CLAUDE_PROJECT_DIR:-$PWD}" rev-parse --show-toplevel 2>/dev/nul
 branch=$(git -C "$root" branch --show-current 2>/dev/null || true)
 [[ $branch == fix-* ]] || exit 0
 
-[[ $file != /* ]] && file="$root/$file"
-rel=${file#"$root"/}
+source "$root/.claude/hooks/lib.sh"
+rel=$(repo_path "$file")
+# macOS file systems ignore case, so match tests the same way.
+shopt -s nocasematch
 case $rel in
   *.test.ts | *.test.tsx | *.spec.ts | tests/* | src-tauri/tests/*) ;;
   *) exit 0 ;;
 esac
-git -C "$root" cat-file -e "HEAD:$rel" 2>/dev/null || exit 0
+git -C "$root" ls-tree -r --name-only HEAD | grep -Fixq -- "$rel" || exit 0
 
 reason="$rel is a committed test, and $branch is a bug-fix branch. Fix the code, not the test. If the test itself is wrong, ask the person to approve the change and say why."
 jq -n --arg r "$reason" \

@@ -15,6 +15,9 @@ file=$(jq -r '.tool_input.file_path // .tool_input.notebook_path // .tool_input.
 command=$(jq -r '.tool_input.command // .command // empty' <<<"$input")
 
 root=$(git -C "${CLAUDE_PROJECT_DIR:-$PWD}" rev-parse --show-toplevel 2>/dev/null || echo "${CLAUDE_PROJECT_DIR:-$PWD}")
+source "$root/.claude/hooks/lib.sh"
+# macOS file systems ignore case, so AGENTS.md and agents.md are one file.
+shopt -s nocasematch
 
 decide() { # decide deny|ask "reason"
   local decision=$1 reason=$2
@@ -56,7 +59,10 @@ if [[ -n $file ]]; then
   if is_secret "$file"; then
     decide deny "Blocked: $file may hold secrets. Agents do not read or write .env files, keys, or ~/.ssh. If a value is needed, ask the person to provide it."
   fi
-  rel=${file#"$root"/}
+  rel=$(repo_path "$file")
+  if is_secret "$rel"; then
+    decide deny "Blocked: $file may hold secrets. Agents do not read or write .env files, keys, or ~/.ssh. If a value is needed, ask the person to provide it."
+  fi
   if [[ $tool != Read && $event != beforeReadFile && $rel != /* ]] && protected_match "$rel"; then
     decide ask "$rel is protected: it controls what Anchovy can upload or record, which dependencies and models are allowed, or which rules agents follow. $approval"
   fi
@@ -80,10 +86,17 @@ if [[ -n $command ]]; then
     fi
   done < <(perl -pe 's/(\|\||&&|;|\||2?>&?1?)/\n/g' <<<"$command" | grep -E 'git[[:space:]]+push' || true)
   if grep -Eq '(>|[[:space:]]tee[[:space:]]|sed[[:space:]]+-i|perl[[:space:]]+-[[:alnum:]]*i|(^|[[:space:];&|])(mv|cp|rm|ln|chmod)[[:space:]]|git[[:space:]]+(checkout|restore|apply|mv|rm)[[:space:]])' <<<"$command"; then
+    # Match the last part of each protected path ("Entitlements.plist",
+    # "capabilities/"), so "cd src-tauri && sed -i ... Entitlements.plist"
+    # and "src/../AGENTS.md" still count.
     while read -r pattern _; do
       [[ -z $pattern || $pattern == \#* ]] && continue
-      if [[ $command == *"${pattern#/}"* ]]; then
-        decide ask "This command may change the protected path ${pattern#/}. $approval"
+      pattern=${pattern#/}
+      name=${pattern%/}
+      name=${name##*/}
+      name_re="(^|[/[:space:]\"'=])${name//./\\.}(/|[[:space:]\"';&|)]|$)"
+      if [[ $command =~ $name_re ]]; then
+        decide ask "This command may change the protected path $pattern. $approval"
       fi
     done <"$root/.github/CODEOWNERS"
   fi
