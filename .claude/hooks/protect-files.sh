@@ -76,15 +76,19 @@ if [[ -n $command ]]; then
     decide deny "Blocked: this command touches a file that may hold secrets (.env, keys, ~/.ssh). Ask the person instead."
   fi
   # Check each git push on its own, so "gh pr create --base main" later on
-  # the same line does not count as a push to main.
+  # the same line does not count as a push to main. Git's own options may
+  # come before "push" ("git -C dir push").
   while IFS= read -r push; do
-    if grep -Eq '[[:space:]](-f|--force[[:alnum:]-]*)([[:space:]]|$)|[[:space:]]\+[[:alnum:]]' <<<"$push"; then
+    # Force: -f alone or inside a cluster (-fu), --force and its variants,
+    # or a +refspec.
+    if grep -Eq '[[:space:]](-[[:alnum:]]*f[[:alnum:]]*|--force[[:alnum:]-]*)(=[^[:space:]]*)?([[:space:]]|$)|[[:space:]]\+[^[:space:]]' <<<"$push"; then
       decide deny "Blocked: force pushes are not allowed. Push a new commit instead."
     fi
-    if grep -Eq '[[:space:]]([^[:space:]]*:)?(refs/heads/)?main([[:space:]]|$)' <<<"$push"; then
+    if grep -Eq '[[:space:]]\+?([^[:space:]]*:)?(refs/heads/)?main([[:space:]]|$)' <<<"$push"; then
       decide deny "Blocked: agents never push to main. Push a step branch and open a pull request."
     fi
-  done < <(perl -pe 's/(\|\||&&|;|\||2?>&?1?)/\n/g' <<<"$command" | grep -E 'git[[:space:]]+push' || true)
+  done < <(perl -pe 's/(\|\||&&|;|\||2?>&?1?)/\n/g' <<<"$command" |
+    grep -E '(^|[[:space:]])git([[:space:]]+[^[:space:]]+)*[[:space:]]+push([[:space:]]|$)' || true)
   if grep -Eq '(>|[[:space:]]tee[[:space:]]|sed[[:space:]]+-i|perl[[:space:]]+-[[:alnum:]]*i|(^|[[:space:];&|])(mv|cp|rm|ln|chmod)[[:space:]]|git[[:space:]]+(checkout|restore|apply|mv|rm)[[:space:]])' <<<"$command"; then
     # Match the last part of each protected path ("Entitlements.plist",
     # "capabilities/"), so "cd src-tauri && sed -i ... Entitlements.plist"
