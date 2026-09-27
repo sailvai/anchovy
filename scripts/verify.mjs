@@ -35,6 +35,7 @@ const steps = [
   ],
   ["Privacy check", "node", ["scripts/check-privacy.mjs"]],
   ["Interface text check", "node", ["scripts/check-ui-text.mjs"]],
+  ["Agent hook tests", "bash", ["scripts/test-hooks.sh"]],
   ["Screenshots (Playwright)", "npx", ["playwright", "test"]],
 ];
 if (!skipBuild) {

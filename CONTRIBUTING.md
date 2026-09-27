@@ -69,7 +69,7 @@ The Anchovy window opens. It follows the macOS appearance, so switch System Sett
 | `npm run verify:device`      | Recording on real audio hardware                 | Your Mac only   |
 | `npm run eval`               | Model quality against the baseline               | Your Mac only   |
 
-`npm run verify` runs format, lint, type, and build checks, Vitest, `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`, `cargo deny`, the privacy and English-only text checks, the screenshot tests, and an unsigned app build. It keeps going after a failure, prints a summary, and exits non-zero if anything failed. Use `npm run verify -- --skip-build` for a faster loop, but run the full command before opening a pull request.
+`npm run verify` runs format, lint, type, and build checks, Vitest, `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`, `cargo deny`, the privacy and English-only text checks, the agent hook tests, the screenshot tests, and an unsigned app build. It keeps going after a failure, prints a summary, and exits non-zero if anything failed. Use `npm run verify -- --skip-build` for a faster loop, but run the full command before opening a pull request.
 
 `verify:device` and `eval` have no checks yet. Recording and model steps fill them in.
 

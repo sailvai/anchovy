@@ -69,14 +69,16 @@ if [[ -n $command ]]; then
   if grep -Eq '(^|[^[:alnum:]_.-])\.env([^[:alnum:]_-]|$)|\.ssh/|id_(rsa|ed25519)|\.pem([^[:alnum:]]|$)' <<<"$command"; then
     decide deny "Blocked: this command touches a file that may hold secrets (.env, keys, ~/.ssh). Ask the person instead."
   fi
-  if grep -Eq 'git[[:space:]]+push' <<<"$command"; then
-    if grep -Eq '[[:space:]](-f|--force[[:alnum:]-]*)([[:space:]]|$)|[[:space:]]\+[[:alnum:]]' <<<"$command"; then
+  # Check each git push on its own, so "gh pr create --base main" later on
+  # the same line does not count as a push to main.
+  while IFS= read -r push; do
+    if grep -Eq '[[:space:]](-f|--force[[:alnum:]-]*)([[:space:]]|$)|[[:space:]]\+[[:alnum:]]' <<<"$push"; then
       decide deny "Blocked: force pushes are not allowed. Push a new commit instead."
     fi
-    if grep -Eq 'git[[:space:]]+push([[:space:]]+[^[:space:]]+)*[[:space:]]+([^[:space:]]*:)?(refs/heads/)?main([[:space:]]|$)' <<<"$command"; then
+    if grep -Eq '[[:space:]]([^[:space:]]*:)?(refs/heads/)?main([[:space:]]|$)' <<<"$push"; then
       decide deny "Blocked: agents never push to main. Push a step branch and open a pull request."
     fi
-  fi
+  done < <(perl -pe 's/(\|\||&&|;|\||2?>&?1?)/\n/g' <<<"$command" | grep -E 'git[[:space:]]+push' || true)
   if grep -Eq '(>|[[:space:]]tee[[:space:]]|sed[[:space:]]+-i|perl[[:space:]]+-[[:alnum:]]*i|(^|[[:space:];&|])(mv|cp|rm|ln|chmod)[[:space:]]|git[[:space:]]+(checkout|restore|apply|mv|rm)[[:space:]])' <<<"$command"; then
     while read -r pattern _; do
       [[ -z $pattern || $pattern == \#* ]] && continue
