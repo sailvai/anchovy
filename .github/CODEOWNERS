@@ -1,0 +1,21 @@
+# Protected files: what the app may upload or record, which dependencies and
+# models are allowed, and which rules agents follow. Changes need Joshua.
+
+/AGENTS.md                           @jiangjunjoshua
+/CLAUDE.md                           @jiangjunjoshua
+/REVIEW.md                           @jiangjunjoshua
+/.claude/                            @jiangjunjoshua
+/.cursor/                            @jiangjunjoshua
+/.github/                            @jiangjunjoshua
+
+/src-tauri/Entitlements.plist        @jiangjunjoshua
+/src-tauri/Info.plist                @jiangjunjoshua
+/src-tauri/tauri.conf.json           @jiangjunjoshua
+/src-tauri/tauri.appstore.conf.json  @jiangjunjoshua
+/src-tauri/capabilities/             @jiangjunjoshua
+/src-tauri/resources/models.json     @jiangjunjoshua
+
+/privacy/                            @jiangjunjoshua
+
+/evals/baseline.json                 @jiangjunjoshua
+/tests/ui/__screenshots__/           @jiangjunjoshua
