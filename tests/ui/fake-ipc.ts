@@ -5,6 +5,10 @@ export type FakeCommands = Record<string, unknown>;
 
 export const defaultCommands: FakeCommands = {
   app_info: { name: "Anchovy", version: "0.1.0" },
+  list_models: { memory_bytes: 16 * 1024 ** 3, models: [] },
+  // Event listeners: the interface subscribes to download progress.
+  "plugin:event|listen": 0,
+  "plugin:event|unlisten": null,
 };
 
 // Installs a stand-in for Tauri's IPC bridge before the page loads.

@@ -9,6 +9,10 @@
   --color-line: #e6e6e9;
   --color-text: #18181b;
   --color-muted: #71717a;
+  /* State colors: selected, ready, failed. */
+  --color-selected: #2563eb;
+  --color-ready: #15803d;
+  --color-failed: #b91c1c;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -18,6 +22,9 @@
     --color-line: #27272a;
     --color-text: #f4f4f5;
     --color-muted: #a1a1aa;
+    --color-selected: #60a5fa;
+    --color-ready: #4ade80;
+    --color-failed: #f87171;
   }
 }
 
