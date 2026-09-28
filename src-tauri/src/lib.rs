@@ -1,13 +1,16 @@
 //! Anchovy's Rust core: the window, the notes module (recording folders,
-//! state, and note.md), and the models module (the shipped list and
-//! downloads). Recording and inference arrive in later plan steps.
+//! state, and note.md), the models module (the shipped list and downloads),
+//! and the recording module. Inference arrives in a later plan step.
 
 pub mod models;
 pub mod notes;
+pub mod recording;
 
 use models::catalog::Catalog;
 use models::store::Store;
 use models::{commands as model_commands, mac as model_mac, Models};
+use recording::commands as recording_commands;
+use recording::core::Recorder;
 use serde::Serialize;
 use std::sync::Arc;
 
@@ -33,6 +36,7 @@ pub fn run() {
     let models = Models::new(Catalog::shipped(), Store::new(models_dir), memory);
     tauri::Builder::default()
         .manage(Arc::new(models))
+        .manage(Arc::new(Recorder::new()))
         .invoke_handler(tauri::generate_handler![
             app_info,
             model_commands::list_models,
@@ -40,6 +44,10 @@ pub fn run() {
             model_commands::download_model,
             model_commands::cancel_model_download,
             model_commands::delete_model,
+            recording_commands::list_input_devices,
+            recording_commands::recording_sources,
+            recording_commands::start_recording,
+            recording_commands::stop_recording,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Anchovy");

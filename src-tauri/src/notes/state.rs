@@ -56,6 +56,15 @@ impl Status {
     }
 }
 
+/// A source that reached the recording. Written as note.md's `inputs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Input {
+    #[serde(rename = "microphone")]
+    Microphone,
+    #[serde(rename = "computer audio")]
+    ComputerAudio,
+}
+
 /// Contents of `.anchovy/state.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct State {
@@ -66,6 +75,10 @@ pub struct State {
     pub asr_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub summary_model: Option<String>,
+    /// What the recording actually captured. Empty only in folders written
+    /// before recording existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inputs: Vec<Input>,
 }
 
 impl State {
@@ -75,6 +88,7 @@ impl State {
             status: Status::Recording,
             asr_model: None,
             summary_model: None,
+            inputs: Vec::new(),
         }
     }
 
@@ -206,6 +220,7 @@ mod tests {
             status: failed(),
             asr_model: Some("Qwen3-ASR 1.7B".into()),
             summary_model: Some("Qwen3-4B-Instruct-2507".into()),
+            inputs: vec![Input::Microphone],
         };
 
         write_state(dir.path(), &state).unwrap();
@@ -226,9 +241,26 @@ mod tests {
             status: Status::NeedsModels,
             asr_model: None,
             summary_model: None,
+            inputs: Vec::new(),
         })
         .unwrap();
         assert_eq!(json, serde_json::json!({ "status": "needs_models" }));
+    }
+
+    #[test]
+    fn inputs_are_written_as_in_note_md() {
+        let mut state = State::new();
+        state.inputs = vec![Input::Microphone, Input::ComputerAudio];
+        let json = serde_json::to_value(&state).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "status": "recording",
+                "inputs": ["microphone", "computer audio"]
+            })
+        );
+        let back: State = serde_json::from_value(json).unwrap();
+        assert_eq!(back, state);
     }
 
     #[test]

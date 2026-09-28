@@ -71,7 +71,9 @@ The Anchovy window opens. It follows the macOS appearance, so switch System Sett
 
 `npm run verify` runs format, lint, type, and build checks, Vitest, `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`, `cargo deny`, the privacy and English-only text checks, the agent hook tests, the screenshot tests, and an unsigned app build. It keeps going after a failure, prints a summary, and exits non-zero if anything failed. Use `npm run verify -- --skip-build` for a faster loop, but run the full command before opening a pull request.
 
-`verify:device` and `eval` have no checks yet. Recording and model steps fill them in.
+`verify:device` records 5 seconds with the app's recording module while `afplay` plays a test tone, and checks that the computer-audio stream captured it. The first run asks for Microphone and System Audio Recording permission for your terminal. `npm run verify:device -- --sandboxed` runs the same check inside an ad-hoc signed, sandboxed `.app`; the first time, macOS asks for both permissions for that `.app`, and until you allow them, computer audio comes back silent and the check fails. The microphone needs a person speaking, so it stays a manual check.
+
+`eval` has no checks yet. The model steps fill it in.
 
 When a screen changes on purpose, update its baseline with `npx playwright test --update-snapshots` and attach the before and after images to the pull request. Baselines need Joshua's review.
 
