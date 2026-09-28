@@ -1,0 +1,81 @@
+@import "tailwindcss" source(".");
+@import "@fontsource-variable/geist";
+
+/*
+ * Proposed tokens for src/styles/index.css in step 2b. Quiet grays carry the
+ * chrome; color only marks state: recording, failed, ready, needs attention,
+ * working, and selected. The first five grays match the app today.
+ *
+ * The app follows macOS through prefers-color-scheme. The mock also accepts
+ * data-theme so each screen can be shown in either mode.
+ */
+@theme {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+
+  --color-surface: #ffffff;
+  --color-surface-raised: #f7f7f8;
+  --color-line: #e6e6e9;
+  --color-text: #18181b;
+  --color-muted: #71717a;
+
+  --color-faint: #a1a1aa;
+  --color-line-strong: #d4d4d8;
+  --color-hover: #efeff1;
+  --color-primary: #18181b;
+  --color-primary-fg: #fafafa;
+
+  --color-selected: #e8eefc;
+  --color-accent: #2563eb;
+  --color-recording: #dc2626;
+  --color-failed: #dc2626;
+  --color-failed-soft: #fdf1f1;
+  --color-ready: #16a34a;
+  --color-attention: #b45309;
+  --color-attention-soft: #fdf6ec;
+}
+
+@layer base {
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --color-surface: #111113;
+    --color-surface-raised: #18181b;
+    --color-line: #27272a;
+    --color-text: #f4f4f5;
+    --color-muted: #a1a1aa;
+
+    --color-faint: #71717a;
+    --color-line-strong: #3f3f46;
+    --color-hover: #232326;
+    --color-primary: #f4f4f5;
+    --color-primary-fg: #18181b;
+
+    --color-selected: #1c2640;
+    --color-accent: #60a5fa;
+    --color-recording: #f87171;
+    --color-failed: #f87171;
+    --color-failed-soft: #2a1718;
+    --color-ready: #4ade80;
+    --color-attention: #fbbf24;
+    --color-attention-soft: #2a2215;
+  }
+
+  :root[data-theme="light"] {
+    color-scheme: light;
+  }
+
+  html,
+  body {
+    margin: 0;
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    cursor: default;
+  }
+
+  body {
+    font-size: 13px;
+    line-height: 1.45;
+  }
+}
