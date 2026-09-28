@@ -15,7 +15,7 @@ use objc2_core_audio_types::{AudioBufferList, AudioStreamBasicDescription, Audio
 use objc2_core_foundation::{CFDictionary, CFRetained, CFString};
 use objc2_foundation::{NSArray, NSDictionary, NSNumber, NSString};
 
-use audio_spike::{Stream, append_cycle};
+use audio_spike::{IoTeardown, Stream, append_cycle, may_free_io_context};
 
 pub type Result<T> = std::result::Result<T, String>;
 
@@ -310,17 +310,32 @@ pub fn record(device: u32, streams: Vec<Stream>, duration: Duration) -> Result<V
         unsafe { AudioDeviceStart(device, proc_id) },
         "AudioDeviceStart",
     );
-    if started.is_ok() {
+    let stopped = if started.is_ok() {
         std::thread::sleep(duration);
         check(
             unsafe { AudioDeviceStop(device, proc_id) },
             "AudioDeviceStop",
-        )?;
-    }
-    check(
+        )
+    } else {
+        Ok(())
+    };
+    let destroyed = check(
         unsafe { AudioDeviceDestroyIOProcID(device, proc_id) },
         "AudioDeviceDestroyIOProcID",
-    )?;
-    started?;
+    );
+    let teardown = IoTeardown {
+        started: started.is_ok(),
+        stopped: started.is_ok() && stopped.is_ok(),
+        destroyed: destroyed.is_ok(),
+    };
+    let outcome = started.and(stopped).and(destroyed);
+    if !may_free_io_context(teardown) {
+        // The IO proc may still be called with `context`: keep it alive for good.
+        Box::leak(shared);
+        return Err(outcome
+            .err()
+            .unwrap_or_else(|| "IO proc teardown failed".into()));
+    }
+    outcome?;
     Ok(shared.into_inner().unwrap())
 }

@@ -171,8 +171,9 @@ pub struct IoTeardown {
 
 /// Whether the IO proc's context may be freed. Core Audio keeps calling a
 /// registered, running IO proc with that pointer, so it must outlive the proc.
-pub fn may_free_io_context(_teardown: IoTeardown) -> bool {
-    true
+pub fn may_free_io_context(teardown: IoTeardown) -> bool {
+    let not_running = !teardown.started || teardown.stopped;
+    not_running && teardown.destroyed
 }
 
 /// Hand-written JSON so the spike needs no serde.
