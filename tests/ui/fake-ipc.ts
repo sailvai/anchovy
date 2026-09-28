@@ -6,6 +6,10 @@ export type FakeCommands = Record<string, unknown>;
 export const defaultCommands: FakeCommands = {
   app_info: { name: "Anchovy", version: "0.1.0" },
   list_models: { memory_bytes: 16 * 1024 ** 3, models: [] },
+  list_recordings: [],
+  read_note: { source: null, inputs: [], sections: [] },
+  show_in_finder: null,
+  move_to_trash: null,
   // Event listeners: the interface subscribes to download progress.
   "plugin:event|listen": 0,
   "plugin:event|unlisten": null,
