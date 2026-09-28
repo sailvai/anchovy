@@ -1,0 +1,17 @@
+[package]
+name = "audio-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "MIT"
+description = "Plan step 4a spike: microphone plus system-audio tap in one aggregate device."
+
+# Standalone: not part of the app's Cargo project.
+[workspace]
+
+[dependencies]
+objc2 = "0.6.4"
+objc2-core-audio = "0.3.2"
+objc2-core-audio-types = "0.3.2"
+objc2-core-foundation = "0.3.2"
+objc2-foundation = "0.3.2"

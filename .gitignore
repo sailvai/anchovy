@@ -1,5 +1,6 @@
 node_modules/
 src-tauri/target/
+spikes/*/target/
 dist/
 .DS_Store
 
