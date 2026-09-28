@@ -160,6 +160,21 @@ pub fn measure(streams: &[Stream], tone_hz: f64, sample_rate: u32) -> Vec<Channe
     out
 }
 
+/// How one recording's IO proc ended. `stopped` is only meaningful when
+/// `started` is true.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct IoTeardown {
+    pub started: bool,
+    pub stopped: bool,
+    pub destroyed: bool,
+}
+
+/// Whether the IO proc's context may be freed. Core Audio keeps calling a
+/// registered, running IO proc with that pointer, so it must outlive the proc.
+pub fn may_free_io_context(_teardown: IoTeardown) -> bool {
+    true
+}
+
 /// Hand-written JSON so the spike needs no serde.
 pub fn report_json(fields: &[(&str, String)], channels: &[ChannelReport]) -> String {
     let num = |v: f64| {
@@ -285,5 +300,31 @@ mod tests {
         let json = report_json(&[("device", "Mic \"A\"".into())], &rows);
         assert!(json.contains(r#""device": "Mic \"A\"""#));
         assert!(json.contains(r#""rms_dbfs": null, "tone_dbfs": -20.0, "all_zero": true"#));
+    }
+
+    fn teardown(started: bool, stopped: bool, destroyed: bool) -> IoTeardown {
+        IoTeardown {
+            started,
+            stopped,
+            destroyed,
+        }
+    }
+
+    #[test]
+    fn io_context_is_freed_after_a_clean_teardown() {
+        assert!(may_free_io_context(teardown(true, true, true)));
+        assert!(may_free_io_context(teardown(false, false, true)));
+    }
+
+    #[test]
+    fn io_context_is_kept_when_stop_fails_because_the_proc_may_still_run() {
+        assert!(!may_free_io_context(teardown(true, false, true)));
+        assert!(!may_free_io_context(teardown(true, false, false)));
+    }
+
+    #[test]
+    fn io_context_is_kept_when_the_proc_is_still_registered() {
+        assert!(!may_free_io_context(teardown(true, true, false)));
+        assert!(!may_free_io_context(teardown(false, false, false)));
     }
 }
