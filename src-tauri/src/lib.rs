@@ -1,6 +1,9 @@
 //! Anchovy's Rust core. For now it only opens the window and answers one
-//! command, so the interface can prove it reaches Rust. Recording, notes,
-//! models, and inference arrive in later plan steps.
+//! command, so the interface can prove it reaches Rust, plus the notes module
+//! (recording folders, state, and note.md). Recording, models, and inference
+//! arrive in later plan steps.
+
+pub mod notes;
 
 use serde::Serialize;
 
