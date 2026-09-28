@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "id": "qwen3-asr-1.7b",
+      "role": "transcribe",
+      "engine": "llama_cpp",
+      "display_name": "Qwen3-ASR 1.7B",
+      "languages": [
+        "Chinese",
+        "English",
+        "Cantonese",
+        "Japanese",
+        "Korean",
+        "French",
+        "German",
+        "Spanish"
+      ],
+      "revision": "36a678687ba7d07a74ca70ccb0e36902e005fb80",
+      "files": [
+        {
+          "name": "Qwen3-ASR-1.7B-Q8_0.gguf",
+          "url": "https://huggingface.co/ggml-org/Qwen3-ASR-1.7B-GGUF/resolve/36a678687ba7d07a74ca70ccb0e36902e005fb80/Qwen3-ASR-1.7B-Q8_0.gguf",
+          "sha256": "58e22d0532d4eacaf034cfac17a6fed159f37c41390c710186783be439d1fc57",
+          "size": 2165034944
+        },
+        {
+          "name": "mmproj-Qwen3-ASR-1.7B-Q8_0.gguf",
+          "url": "https://huggingface.co/ggml-org/Qwen3-ASR-1.7B-GGUF/resolve/36a678687ba7d07a74ca70ccb0e36902e005fb80/mmproj-Qwen3-ASR-1.7B-Q8_0.gguf",
+          "sha256": "46c1d533af3f354ceb37ce855dbceff7da7fa7cf1e6a523df3b13440bd164c0d",
+          "size": 355709344
+        }
+      ],
+      "min_ram_gb": 8,
+      "license": "Apache-2.0",
+      "default": true
+    },
+    {
+      "id": "qwen3-asr-0.6b",
+      "role": "transcribe",
+      "engine": "llama_cpp",
+      "display_name": "Qwen3-ASR 0.6B",
+      "languages": [
+        "Chinese",
+        "English",
+        "Cantonese",
+        "Japanese",
+        "Korean",
+        "French",
+        "German",
+        "Spanish"
+      ],
+      "revision": "928ab958557df9aa2ef1c93e0e83c7ad0933fae2",
+      "files": [
+        {
+          "name": "Qwen3-ASR-0.6B-Q8_0.gguf",
+          "url": "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF/resolve/928ab958557df9aa2ef1c93e0e83c7ad0933fae2/Qwen3-ASR-0.6B-Q8_0.gguf",
+          "sha256": "bca259818b50ca7c4c05e9bdb35a5dc04fa039653a6d6f3f0f331f96f6aa1971",
+          "size": 804749248
+        },
+        {
+          "name": "mmproj-Qwen3-ASR-0.6B-Q8_0.gguf",
+          "url": "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF/resolve/928ab958557df9aa2ef1c93e0e83c7ad0933fae2/mmproj-Qwen3-ASR-0.6B-Q8_0.gguf",
+          "sha256": "41a342b5e4c514e968cb756de6cd1b7be39eff43c44c57a2ef5fc6522e36603d",
+          "size": 214392480
+        }
+      ],
+      "min_ram_gb": 4,
+      "license": "Apache-2.0",
+      "default": false
+    },
+    {
+      "id": "qwen3-4b-instruct-2507-q4",
+      "role": "summarize",
+      "engine": "llama_cpp",
+      "display_name": "Qwen3-4B Instruct 2507",
+      "languages": ["Chinese", "English", "Japanese", "Korean", "French", "German", "Spanish"],
+      "revision": "a06e946bb6b655725eafa393f4a9745d460374c9",
+      "files": [
+        {
+          "name": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+          "url": "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/a06e946bb6b655725eafa393f4a9745d460374c9/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+          "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
+          "size": 2497281120
+        }
+      ],
+      "min_ram_gb": 8,
+      "license": "Apache-2.0",
+      "default": true
+    },
+    {
+      "id": "qwen3-4b-instruct-2507-q8",
+      "role": "summarize",
+      "engine": "llama_cpp",
+      "display_name": "Qwen3-4B Instruct 2507 (8-bit)",
+      "languages": ["Chinese", "English", "Japanese", "Korean", "French", "German", "Spanish"],
+      "revision": "e6f794d44f9395d0184a966c27b5ae99ea356fcb",
+      "files": [
+        {
+          "name": "qwen3-4b-instruct-2507-q8_0.gguf",
+          "url": "https://huggingface.co/ggml-org/Qwen3-4B-Instruct-2507-Q8_0-GGUF/resolve/e6f794d44f9395d0184a966c27b5ae99ea356fcb/qwen3-4b-instruct-2507-q8_0.gguf",
+          "sha256": "ae916ede1c010a26955ee8ae2e908bf8815a3f135ec860439ab924701c69d5f1",
+          "size": 4280403520
+        }
+      ],
+      "min_ram_gb": 16,
+      "license": "Apache-2.0",
+      "default": false
+    }
+  ]
+}

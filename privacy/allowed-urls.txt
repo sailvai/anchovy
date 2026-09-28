@@ -11,7 +11,14 @@ https://github.com/sailvai/anchovy
 # Apple's plist DOCTYPE; the app never fetches it.
 http://www.apple.com/DTDs/PropertyList-1.0.dtd
 
-# Local addresses: the Vite dev server and Tauri's own IPC and asset protocols.
+# Model downloads from src-tauri/resources/models.json, pinned by commit and
+# sha256. The download client follows redirects only to huggingface.co and
+# Hugging Face's own *.hf.co download hosts.
+https://huggingface.co/
+
+# Local addresses: the Vite dev server, a loopback test server, and Tauri's own
+# IPC and asset protocols.
 http://localhost:
+http://127.0.0.1:
 http://ipc.localhost
 http://asset.localhost
