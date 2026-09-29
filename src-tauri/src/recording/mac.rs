@@ -5,7 +5,6 @@
 //! decision lives in `core.rs`.
 
 use std::ffi::{c_void, CStr};
-use std::path::PathBuf;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -559,17 +558,6 @@ pub fn local_now() -> StartTime {
         minute: tm.tm_min as u8,
         second: tm.tm_sec as u8,
     }
-}
-
-/// `~/Documents/Anchovy`, the default notes folder, until the first-launch
-/// screens (plan step 3) let the user choose one. Inside the app sandbox
-/// `HOME` is the app's container.
-pub fn default_notes_dir() -> std::io::Result<PathBuf> {
-    let home = std::env::var_os("HOME")
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "HOME is not set"))?;
-    let dir = PathBuf::from(home).join("Documents/Anchovy");
-    std::fs::create_dir_all(&dir)?;
-    Ok(dir)
 }
 
 #[cfg(test)]

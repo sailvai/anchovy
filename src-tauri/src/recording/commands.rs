@@ -63,7 +63,10 @@ pub fn start_recording(
     recorder: State<Arc<Recorder>>,
     device_uid: Option<String>,
 ) -> Result<Recording, String> {
-    let notes_dir = mac::default_notes_dir().map_err(|err| err.to_string())?;
+    // The same folder the library lists, so a new recording shows up there.
+    let notes_dir = crate::library::mac::notes_dir()
+        .and_then(|dir| std::fs::create_dir_all(&dir).map(|()| dir))
+        .map_err(|err| err.to_string())?;
     recorder
         .start(
             &notes_dir,

@@ -1,11 +1,14 @@
 //! Anchovy's Rust core: the window, the notes module (recording folders,
-//! state, and note.md), the models module (the shipped list and downloads),
-//! and the recording module. Inference arrives in a later plan step.
+//! state, and note.md), the library (the recording list), the models module
+//! (the shipped list and downloads), and the recording module. Inference
+//! arrives in a later plan step.
 
+pub mod library;
 pub mod models;
 pub mod notes;
 pub mod recording;
 
+use library::{commands as library_commands, mac as library_mac, Library};
 use models::catalog::Catalog;
 use models::store::Store;
 use models::{commands as model_commands, mac as model_mac, Models};
@@ -34,11 +37,17 @@ pub fn run() {
     // hw.memsize does not fail on macOS; 8 GB is the smallest Apple Silicon Mac.
     let memory = model_mac::memory_bytes().unwrap_or(8 * models::fit::GIB);
     let models = Models::new(Catalog::shipped(), Store::new(models_dir), memory);
+    let notes_dir = library_mac::notes_dir().expect("HOME is set for every macOS app");
     tauri::Builder::default()
         .manage(Arc::new(models))
+        .manage(Library::new(notes_dir))
         .manage(Arc::new(Recorder::new()))
         .invoke_handler(tauri::generate_handler![
             app_info,
+            library_commands::list_recordings,
+            library_commands::read_note,
+            library_commands::show_in_finder,
+            library_commands::move_to_trash,
             model_commands::list_models,
             model_commands::select_model,
             model_commands::download_model,

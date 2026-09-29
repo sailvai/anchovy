@@ -6,6 +6,10 @@ export type FakeCommands = Record<string, unknown>;
 export const defaultCommands: FakeCommands = {
   app_info: { name: "Anchovy", version: "0.1.0" },
   list_models: { memory_bytes: 16 * 1024 ** 3, models: [] },
+  list_recordings: [],
+  read_note: { source: null, inputs: [], sections: [] },
+  show_in_finder: null,
+  move_to_trash: null,
   list_input_devices: [{ uid: "BuiltIn", name: "MacBook Air Microphone", is_default: true }],
   recording_sources: { microphone: "MacBook Air Microphone", computer_audio: null },
   // Event listeners: the interface subscribes to download progress.

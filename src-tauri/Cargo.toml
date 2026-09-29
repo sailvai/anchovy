@@ -25,13 +25,16 @@ serde_json = "1"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "native-tls"] }
 sha2 = "0.10"
 libc = "0.2"
-# Recording: Core Audio through objc2 (plan step 4a), and a lock-free
-# single-producer ring buffer so the audio callback never locks or allocates.
+# Move to Trash and Show in Finder, and recording through Core Audio (plan
+# step 4a). objc2 is already in the tree through Tauri.
 objc2 = "0.6.4"
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSArray", "NSDictionary", "NSError", "NSFileManager", "NSString", "NSURL", "NSUUID", "NSValue"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWorkspace"] }
 objc2-core-audio = "0.3.2"
 objc2-core-audio-types = "0.3.2"
 objc2-core-foundation = "0.3.2"
-objc2-foundation = "0.3.2"
+# A lock-free single-producer ring buffer so the audio callback never locks or
+# allocates.
 rtrb = "0.4"
 
 [profile.release]
