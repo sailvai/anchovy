@@ -1273,6 +1273,29 @@ We planned the launch.
     }
 
     #[test]
+    fn a_meeting_that_mixes_chinese_and_english_may_be_summarized_in_either() {
+        // Chinese first, then mostly English: the speech model reports
+        // English, and the summary model may still answer in Chinese.
+        let mixed = "大家好，很高兴认识大家，我叫小王。I work remotely from Berlin, and I'm \
+                     happy to join the team and learn from all of you.";
+        let chinese = r#"{"summary": "小王做了自我介绍，很高兴加入团队。", "decisions": [], "action_items": []}"#;
+        let english = r#"{"summary": "Xiao Wang introduced himself and is happy to join the team.", "decisions": [], "action_items": []}"#;
+        for answer in [chinese, english] {
+            let s = setup_with(
+                20,
+                FakeEngines::new(&[mixed], &[answer]),
+                FakeMemory::plenty(),
+                24_000,
+            );
+
+            s.pipeline.generate(&s.folder, false).unwrap();
+            s.pipeline.wait_idle();
+
+            assert_eq!(status(&s.folder), Status::Ready, "{answer}");
+        }
+    }
+
+    #[test]
     fn two_bad_answers_fail_the_note_and_keep_the_audio() {
         let s = setup(&["not json", "still not json"]);
         let audio = fs::read(s.folder.join("audio.wav")).unwrap();
