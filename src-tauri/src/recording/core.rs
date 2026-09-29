@@ -706,6 +706,52 @@ impl Recorder {
     }
 }
 
+/// The computer audio check plays this tone from Anchovy's own process into a
+/// muted tap of that process, so nothing reaches the speakers. About -60 dBFS,
+/// in case the output is not muted.
+pub const PROBE_AMPLITUDE: f32 = 0.001;
+const PROBE_FREQUENCY: f32 = 440.0;
+
+/// A sine tone for the computer audio check. Runs on the audio thread.
+pub struct Tone {
+    phase: f32,
+    step: f32,
+}
+
+impl Tone {
+    pub fn new(sample_rate: f64) -> Self {
+        Tone {
+            phase: 0.0,
+            step: std::f32::consts::TAU * PROBE_FREQUENCY / sample_rate as f32,
+        }
+    }
+
+    /// Fills one interleaved output buffer of `channels` channels; every
+    /// channel gets the same sample. Call `advance` once per IO cycle after
+    /// filling every buffer, so all buffers start at the same phase.
+    pub fn fill(&self, out: &mut [f32], channels: usize) {
+        for (i, frame) in out.chunks_mut(channels.max(1)).enumerate() {
+            let sample = PROBE_AMPLITUDE * (self.phase + self.step * i as f32).sin();
+            frame.fill(sample);
+        }
+    }
+
+    pub fn advance(&mut self, frames: usize) {
+        self.phase = (self.phase + self.step * frames as f32) % std::f32::consts::TAU;
+    }
+}
+
+/// Whether the tap's buffers, which follow the `before_tap` input buffers of
+/// the aggregate device's main sub-device, hold anything but digital silence. A denied or unanswered computer audio
+/// permission gives a tap of zeros.
+pub fn tap_heard(buffers: &[&[f32]], before_tap: usize) -> bool {
+    buffers
+        .get(before_tap..)
+        .unwrap_or_default()
+        .iter()
+        .any(|buffer| buffer.iter().any(|&sample| sample != 0.0))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1163,6 +1209,50 @@ mod tests {
         // Still registered.
         assert!(!teardown(true, true, false).may_free_context());
         assert!(!teardown(false, false, false).may_free_context());
+    }
+
+    #[test]
+    fn the_probe_tone_is_quiet_and_not_silent() {
+        let tone = Tone::new(48_000.0);
+        let mut out = vec![0.0; 2 * 480];
+        tone.fill(&mut out, 2);
+        let peak = out.iter().fold(0f32, |peak, s| peak.max(s.abs()));
+        assert!(peak > 0.0 && peak <= PROBE_AMPLITUDE, "{peak}");
+        // Both channels of a frame carry the same sample.
+        assert!(out.chunks(2).all(|frame| frame[0] == frame[1]));
+    }
+
+    #[test]
+    fn the_probe_tone_continues_across_cycles() {
+        let mut tone = Tone::new(48_000.0);
+        let mut whole = vec![0.0; 256];
+        tone.fill(&mut whole, 1);
+        let mut first = vec![0.0; 128];
+        let mut second = vec![0.0; 128];
+        let mut split = Tone::new(48_000.0);
+        split.fill(&mut first, 1);
+        split.advance(128);
+        split.fill(&mut second, 1);
+        for (a, b) in whole[128..].iter().zip(&second) {
+            assert!((a - b).abs() < 1e-6);
+        }
+        tone.advance(256);
+    }
+
+    #[test]
+    fn only_sound_in_the_tap_buffer_counts() {
+        let silence = [0.0f32; 64];
+        let mut quiet = [0.0f32; 64];
+        quiet[10] = PROBE_AMPLITUDE / 2.0;
+        // No sub-device input, then the tap.
+        assert!(tap_heard(&[&quiet], 0));
+        assert!(!tap_heard(&[&silence], 0));
+        // A headset's microphone comes first and does not count.
+        assert!(!tap_heard(&[&quiet, &silence], 1));
+        assert!(tap_heard(&[&silence, &quiet], 1));
+        // No tap buffer at all.
+        assert!(!tap_heard(&[&quiet], 1));
+        assert!(!tap_heard(&[], 0));
     }
 
     #[test]

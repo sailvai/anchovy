@@ -6,7 +6,8 @@
 
 use std::ffi::{c_void, CStr};
 use std::ptr::NonNull;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::time::Duration;
 
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
@@ -17,8 +18,8 @@ use objc2_core_foundation::{CFDictionary, CFRetained, CFString};
 use objc2_foundation::{NSArray, NSDictionary, NSNumber, NSString};
 
 use super::core::{
-    listable, pick_microphone, rings, Capture, Feed, InputDevice, IoTeardown, RecordingError,
-    Started, StreamLayout, MAX_STREAMS, OWN_DEVICE_UID_PREFIX,
+    listable, pick_microphone, rings, tap_heard, Capture, Feed, InputDevice, IoTeardown,
+    RecordingError, Started, StreamLayout, Tone, MAX_STREAMS, OWN_DEVICE_UID_PREFIX,
 };
 use crate::notes::folder::StartTime;
 
@@ -220,30 +221,53 @@ pub fn own_process_object() -> Option<u32> {
     (id != kAudioObjectUnknown).then_some(id)
 }
 
+fn process_list(ids: &[u32]) -> Retained<NSArray<NSNumber>> {
+    let numbers: Vec<Retained<NSNumber>> = ids.iter().map(|&id| NSNumber::new_u32(id)).collect();
+    NSArray::from_retained_slice(&numbers)
+}
+
 /// A private, unmuted stereo tap of every process's output except
 /// `excluded`.
 fn create_tap(excluded: &[u32]) -> Result<(u32, String)> {
     // SAFETY: CATapDescription is created and configured on this thread
     // before Core Audio sees it.
     let description = unsafe {
-        let numbers: Vec<Retained<NSNumber>> =
-            excluded.iter().map(|&id| NSNumber::new_u32(id)).collect();
-        let excluded = NSArray::from_retained_slice(&numbers);
         let d = CATapDescription::initStereoGlobalTapButExcludeProcesses(
             CATapDescription::alloc(),
-            &excluded,
+            &process_list(excluded),
         );
         d.setName(&NSString::from_str("Anchovy"));
         d.setPrivate(true);
         d.setMuteBehavior(CATapMuteBehavior::Unmuted);
         d
     };
+    register_tap(&description)
+}
+
+/// A private tap of Anchovy's own output only, muted so nothing it plays
+/// reaches the speakers. Used by the computer audio check.
+fn create_own_muted_tap(own: u32) -> Result<(u32, String)> {
+    // SAFETY: as in `create_tap`.
+    let description = unsafe {
+        let d = CATapDescription::initStereoMixdownOfProcesses(
+            CATapDescription::alloc(),
+            &process_list(&[own]),
+        );
+        d.setName(&NSString::from_str("Anchovy check"));
+        d.setPrivate(true);
+        d.setMuteBehavior(CATapMuteBehavior::Muted);
+        d
+    };
+    register_tap(&description)
+}
+
+fn register_tap(description: &CATapDescription) -> Result<(u32, String)> {
     // SAFETY: reading the UUID the description generated.
     let uid = unsafe { description.UUID().UUIDString() }.to_string();
     let mut id = kAudioObjectUnknown;
     // SAFETY: `description` is a valid CATapDescription; `id` is written.
     check(
-        unsafe { AudioHardwareCreateProcessTap(Some(&description), &mut id) },
+        unsafe { AudioHardwareCreateProcessTap(Some(description), &mut id) },
         "Creating the computer audio tap",
     )?;
     Ok((id, uid))
@@ -268,15 +292,15 @@ fn dict(pairs: &[(&CStr, &AnyObject)]) -> Retained<NSDictionary<NSString, AnyObj
     NSDictionary::from_slices(&key_refs, &values)
 }
 
-/// A private aggregate device: the microphone as main (clock) sub-device, the
-/// tap in its tap list with drift compensation.
+/// A private aggregate device: `main_uid` (the microphone when recording) as
+/// main (clock) sub-device, the tap in its tap list with drift compensation.
 ///
 /// Tap auto-start stays off. With it on, the device does not run while no
 /// process is playing sound, so a recording started in a quiet room got no
 /// audio until something played (found by the verify:device loopback).
-fn create_aggregate(mic_uid: &str, tap_uid: &str) -> Result<u32> {
+fn create_aggregate(main_uid: &str, tap_uid: &str) -> Result<u32> {
     static NEXT: AtomicU32 = AtomicU32::new(0);
-    let mic = NSString::from_str(mic_uid);
+    let mic = NSString::from_str(main_uid);
     let tap = NSString::from_str(tap_uid);
     let yes = NSNumber::new_bool(true);
     let sub_device = dict(&[(kAudioSubDeviceUIDKey, &mic)]);
@@ -371,14 +395,15 @@ unsafe extern "C-unwind" fn io_proc(
     0
 }
 
-/// A registered, running IO proc and the Feed it writes into.
-struct Io {
+/// A registered, running IO proc and the context it is called with (the
+/// Feed when recording).
+struct Io<T> {
     device: u32,
     proc_id: AudioDeviceIOProcID,
-    feed: *mut Feed,
+    feed: *mut T,
 }
 
-fn start_io(device: u32, feed: Feed) -> Result<Io> {
+fn start_io<T>(device: u32, feed: T, proc: AudioDeviceIOProc) -> Result<Io<T>> {
     let feed = Box::into_raw(Box::new(feed));
     let mut proc_id: AudioDeviceIOProcID = None;
     // SAFETY: `feed` stays alive until the proc is stopped and destroyed.
@@ -386,7 +411,7 @@ fn start_io(device: u32, feed: Feed) -> Result<Io> {
         unsafe {
             AudioDeviceCreateIOProcID(
                 device,
-                Some(io_proc),
+                proc,
                 feed as *mut c_void,
                 NonNull::from(&mut proc_id),
             )
@@ -414,7 +439,7 @@ fn start_io(device: u32, feed: Feed) -> Result<Io> {
     Ok(io)
 }
 
-fn stop_io(io: Io, started: bool) -> Result<()> {
+fn stop_io<T>(io: Io<T>, started: bool) -> Result<()> {
     // SAFETY: `io` holds a proc registered on `io.device`.
     let stopped = if started {
         check(
@@ -443,7 +468,7 @@ fn stop_io(io: Io, started: bool) -> Result<()> {
 }
 
 struct MacCapture {
-    io: Io,
+    io: Io<Feed>,
     aggregate: Option<u32>,
     tap: Option<u32>,
 }
@@ -476,7 +501,7 @@ fn start_with_computer_audio(mic: &Device) -> Result<(MacCapture, f64, super::co
             }
             let rate = nominal_sample_rate(aggregate)?;
             let (feed, drain) = rings(rate, layout);
-            Ok((start_io(aggregate, feed)?, rate, drain))
+            Ok((start_io(aggregate, feed, Some(io_proc))?, rate, drain))
         })();
         match running {
             Ok((io, rate, drain)) => Ok((
@@ -504,7 +529,7 @@ fn start_microphone_only(mic: &Device) -> Result<(MacCapture, f64, super::core::
     let layout = StreamLayout::split(&mic.streams, mic.streams.len())?;
     let rate = nominal_sample_rate(mic.id)?;
     let (feed, drain) = rings(rate, layout);
-    let io = start_io(mic.id, feed)?;
+    let io = start_io(mic.id, feed, Some(io_proc))?;
     Ok((
         MacCapture {
             io,
@@ -539,6 +564,115 @@ pub fn start(wanted_uid: Option<&str>) -> Result<Started> {
         drain,
         microphone: mic.info.name.clone(),
     })
+}
+
+/// What the computer audio check's IO proc works with.
+struct Probe {
+    tone: Tone,
+    /// Input buffers of the main sub-device, which come before the tap's.
+    before_tap: usize,
+    heard: AtomicBool,
+}
+
+/// Runs on Core Audio's real-time thread: plays the tone into Anchovy's own
+/// (muted) output and listens for it in the tap.
+unsafe extern "C-unwind" fn probe_proc(
+    _device: AudioObjectID,
+    _now: NonNull<AudioTimeStamp>,
+    input: NonNull<AudioBufferList>,
+    _input_time: NonNull<AudioTimeStamp>,
+    output: NonNull<AudioBufferList>,
+    _output_time: NonNull<AudioTimeStamp>,
+    context: *mut c_void,
+) -> i32 {
+    // SAFETY: `context` is the Probe registered with this proc, used by one
+    // IO thread at a time.
+    let probe = unsafe { &mut *(context as *mut Probe) };
+    let mut buffers: [&[f32]; MAX_STREAMS] = [&[]; MAX_STREAMS];
+    // SAFETY: both lists hold mNumberBuffers valid AudioBuffers of 32-bit
+    // float samples for the duration of this call.
+    unsafe {
+        let list = input.as_ptr();
+        let count = ((*list).mNumberBuffers as usize).min(MAX_STREAMS);
+        let first = (*list).mBuffers.as_ptr();
+        for (i, slot) in buffers.iter_mut().enumerate().take(count) {
+            let b = &*first.add(i);
+            if !b.mData.is_null() {
+                *slot = std::slice::from_raw_parts(
+                    b.mData as *const f32,
+                    b.mDataByteSize as usize / size_of::<f32>(),
+                );
+            }
+        }
+        if tap_heard(&buffers[..count], probe.before_tap) {
+            probe.heard.store(true, Ordering::Relaxed);
+        }
+        let list = output.as_ptr();
+        let first = (*list).mBuffers.as_ptr();
+        let mut frames = 0;
+        for i in 0..(*list).mNumberBuffers as usize {
+            let b = &*first.add(i);
+            let channels = b.mNumberChannels.max(1) as usize;
+            if b.mData.is_null() {
+                continue;
+            }
+            let out = std::slice::from_raw_parts_mut(
+                b.mData as *mut f32,
+                b.mDataByteSize as usize / size_of::<f32>(),
+            );
+            probe.tone.fill(out, channels);
+            frames = out.len() / channels;
+        }
+        probe.tone.advance(frames);
+    }
+    0
+}
+
+fn default_output_device() -> Result<u32> {
+    let id: u32 = get(
+        kAudioObjectSystemObject as u32,
+        kAudioHardwarePropertyDefaultOutputDevice,
+        kAudioObjectPropertyScopeGlobal,
+        kAudioObjectUnknown,
+    )?;
+    if id == kAudioObjectUnknown {
+        return Err(RecordingError::Device("there is no audio output".into()));
+    }
+    Ok(id)
+}
+
+/// Whether macOS lets Anchovy record computer audio. There is no public call
+/// that says, so for `duration` Anchovy plays a quiet tone into a muted tap
+/// of its own output and listens for it: a denied (or still unanswered)
+/// permission gives a tap of zeros. The first check shows the system prompt.
+/// Nothing is heard on the speakers and nothing is saved.
+pub fn probe_computer_audio(duration: Duration) -> Result<bool> {
+    let output = default_output_device()?;
+    let output_uid = get_string(output, kAudioDevicePropertyDeviceUID)?;
+    let before_tap = input_streams(output).map(|s| s.len()).unwrap_or(0);
+    let own = own_process_object()
+        .ok_or_else(|| RecordingError::Device("Core Audio does not list Anchovy".into()))?;
+    let (tap, tap_uid) = create_own_muted_tap(own)?;
+    let result = (|| {
+        let aggregate = create_aggregate(&output_uid, &tap_uid)?;
+        let heard = (|| {
+            let probe = Probe {
+                tone: Tone::new(nominal_sample_rate(aggregate)?),
+                before_tap,
+                heard: AtomicBool::new(false),
+            };
+            let io = start_io(aggregate, probe, Some(probe_proc))?;
+            std::thread::sleep(duration);
+            // SAFETY: an atomic read; the proc only stores to it.
+            let heard = unsafe { (*io.feed).heard.load(Ordering::Relaxed) };
+            stop_io(io, true)?;
+            Ok(heard)
+        })();
+        let _ = destroy_aggregate(aggregate);
+        heard
+    })();
+    let _ = destroy_tap(tap);
+    result
 }
 
 /// The local wall-clock time now.

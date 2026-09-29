@@ -28,8 +28,12 @@ libc = "0.2"
 # Move to Trash and Show in Finder, and recording through Core Audio (plan
 # step 4a). objc2 is already in the tree through Tauri.
 objc2 = "0.6.4"
-objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSArray", "NSDictionary", "NSError", "NSFileManager", "NSString", "NSURL", "NSUUID", "NSValue"] }
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWorkspace"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSArray", "NSData", "NSDictionary", "NSError", "NSFileManager", "NSString", "NSURL", "NSUUID", "NSValue"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWorkspace", "NSOpenPanel", "NSSavePanel", "NSPanel", "NSWindow", "NSResponder", "NSRunningApplication", "NSApplication"] }
+# The microphone permission (plan step 3): AVCaptureDevice is the public API
+# that reports and asks for it.
+objc2-av-foundation = { version = "0.3.2", default-features = false, features = ["std", "block2", "AVCaptureDevice", "AVMediaFormat"] }
+block2 = "0.6"
 objc2-core-audio = "0.3.2"
 objc2-core-audio-types = "0.3.2"
 objc2-core-foundation = "0.3.2"

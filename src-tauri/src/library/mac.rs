@@ -1,5 +1,6 @@
-//! The macOS calls the library needs: where the notes folder is, moving a
-//! folder to the Trash, and showing a folder in Finder. Kept thin; the logic
+//! The macOS calls the library needs: moving a folder to the Trash and
+//! showing a folder in Finder. The notes folder itself comes from
+//! `folder_access`. Kept thin; the logic
 //! lives in `library.rs`.
 
 use std::io;
@@ -7,14 +8,6 @@ use std::path::{Path, PathBuf};
 
 use objc2_app_kit::NSWorkspace;
 use objc2_foundation::{NSArray, NSFileManager, NSString, NSURL};
-
-/// `~/Documents/Anchovy`, the default notes folder. The first-launch screens
-/// (plan step 3) replace this with the folder the user chooses.
-pub fn notes_dir() -> io::Result<PathBuf> {
-    let home = std::env::var_os("HOME")
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?;
-    Ok(PathBuf::from(home).join("Documents/Anchovy"))
-}
 
 fn file_url(path: &Path) -> io::Result<objc2::rc::Retained<NSURL>> {
     let path = path
@@ -50,11 +43,6 @@ mod tests {
     use super::*;
     use crate::notes::test_dir::TestDir;
     use std::fs;
-
-    #[test]
-    fn notes_live_in_documents() {
-        assert!(notes_dir().unwrap().ends_with("Documents/Anchovy"));
-    }
 
     #[test]
     fn trash_moves_the_folder_and_keeps_its_contents() {

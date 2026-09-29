@@ -12,6 +12,8 @@ export function Sidebar({
   selected,
   place,
   now,
+  canRecord,
+  onRecord,
   onSelect,
   onPlace,
 }: {
@@ -19,14 +21,15 @@ export function Sidebar({
   selected: string | null;
   place: Place | null;
   now: Date;
+  canRecord: boolean;
+  onRecord: () => void;
   onSelect: (folder: string) => void;
   onPlace: (place: Place) => void;
 }) {
   return (
     <aside className="flex w-[240px] shrink-0 flex-col border-r border-line bg-surface-raised">
       <div className="p-3">
-        {/* Recording arrives in plan step 4. */}
-        <Button className="w-full" disabled>
+        <Button className="w-full" disabled={!canRecord} onClick={onRecord}>
           <RecordDot />
           Record
         </Button>

@@ -1,20 +1,25 @@
 //! Anchovy's Rust core: the window, the notes module (recording folders,
 //! state, and note.md), the library (the recording list), the models module
-//! (the shipped list and downloads), and the recording module. Inference
-//! arrives in a later plan step.
+//! (the shipped list and downloads), the recording module, and first launch
+//! (the notes folder bookmark and permissions). Inference arrives in a later
+//! plan step.
 
+pub mod folder_access;
 pub mod library;
 pub mod models;
 pub mod notes;
 pub mod recording;
+pub mod setup;
 
-use library::{commands as library_commands, mac as library_mac, Library};
+use folder_access::{commands as folder_commands, mac as folder_mac, FolderAccess};
+use library::{commands as library_commands, Library};
 use models::catalog::Catalog;
 use models::store::Store;
 use models::{commands as model_commands, mac as model_mac, Models};
 use recording::commands as recording_commands;
 use recording::core::Recorder;
 use serde::Serialize;
+use setup::{commands as setup_commands, Setup};
 use std::sync::Arc;
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -37,10 +42,20 @@ pub fn run() {
     // hw.memsize does not fail on macOS; 8 GB is the smallest Apple Silicon Mac.
     let memory = model_mac::memory_bytes().unwrap_or(8 * models::fit::GIB);
     let models = Models::new(Catalog::shipped(), Store::new(models_dir), memory);
-    let notes_dir = library_mac::notes_dir().expect("HOME is set for every macOS app");
+    let support_dir = folder_mac::support_dir().expect("HOME is set for every macOS app");
+    let folder_access = FolderAccess::new(support_dir.clone(), folder_mac::MacBookmarks);
+    // Until a notes folder is chosen on first launch, the library is empty.
+    let library = Library::without_folder();
+    match folder_access.restore() {
+        Ok(Some(notes_dir)) => library.set_notes_dir(notes_dir),
+        Ok(None) => {}
+        Err(err) => eprintln!("Anchovy can't read the saved notes folder. {err}"),
+    }
     tauri::Builder::default()
         .manage(Arc::new(models))
-        .manage(Library::new(notes_dir))
+        .manage(library)
+        .manage(folder_access)
+        .manage(Arc::new(Setup::load(support_dir)))
         .manage(Arc::new(Recorder::new()))
         .invoke_handler(tauri::generate_handler![
             app_info,
@@ -57,6 +72,13 @@ pub fn run() {
             recording_commands::recording_sources,
             recording_commands::start_recording,
             recording_commands::stop_recording,
+            folder_commands::choose_notes_folder,
+            folder_commands::use_default_notes_folder,
+            setup_commands::setup_status,
+            setup_commands::request_microphone,
+            setup_commands::check_computer_audio,
+            setup_commands::finish_setup,
+            setup_commands::open_privacy_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Anchovy");

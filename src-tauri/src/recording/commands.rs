@@ -8,6 +8,8 @@ use tauri::{AppHandle, Emitter, State};
 
 use super::core::{ComputerAudio, Recorder, Recording, Saved, PROGRESS_INTERVAL};
 use super::mac;
+use crate::library::Library;
+use crate::setup::can_record;
 
 pub const PROGRESS_EVENT: &str = "recording-progress";
 
@@ -61,12 +63,19 @@ pub fn recording_sources(
 pub fn start_recording(
     app: AppHandle,
     recorder: State<Arc<Recorder>>,
+    library: State<Library>,
     device_uid: Option<String>,
 ) -> Result<Recording, String> {
     // The same folder the library lists, so a new recording shows up there.
-    let notes_dir = crate::library::mac::notes_dir()
-        .and_then(|dir| std::fs::create_dir_all(&dir).map(|()| dir))
-        .map_err(|err| err.to_string())?;
+    let notes_dir = library.notes_dir();
+    let microphone = crate::setup::mac::microphone_access();
+    if !can_record(notes_dir.is_some(), microphone) {
+        return Err(match notes_dir {
+            None => "Choose a notes folder before recording.".into(),
+            Some(_) => "Anchovy needs microphone access to record.".into(),
+        });
+    }
+    let notes_dir = notes_dir.unwrap_or_default();
     recorder
         .start(
             &notes_dir,

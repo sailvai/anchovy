@@ -3,6 +3,7 @@
 //!
 //!   loopback tone <file.wav> [--seconds 10] [--tone-hz 997]
 //!   loopback record [--seconds 5] [--tone-hz 997] [--out <dir>]
+//!   loopback probe
 //!
 //! `record` runs the app's own recorder (the default microphone plus the
 //! system-audio tap) while another process plays the tone, then checks that
@@ -11,6 +12,9 @@
 //! recording that begins while the Mac is silent. It
 //! prints a JSON report and exits 1 if a check fails. The microphone needs a
 //! person speaking, so it is only reported here, never judged.
+//!
+//! `probe` runs the one-second computer audio check the first-launch screen
+//! uses, and exits 1 unless it reports computer audio as allowed.
 
 use std::f64::consts::PI;
 use std::path::PathBuf;
@@ -59,7 +63,10 @@ fn main() {
     let result = match args.first().map(String::as_str) {
         Some("tone") => tone(&args),
         Some("record") => record(&args),
-        _ => Err("usage: loopback tone <file.wav> | record [--seconds N] [--out <dir>]".into()),
+        Some("probe") => probe(),
+        _ => Err(
+            "usage: loopback tone <file.wav> | record [--seconds N] [--out <dir>] | probe".into(),
+        ),
     };
     match result {
         Ok(true) => {}
@@ -69,6 +76,12 @@ fn main() {
             std::process::exit(2);
         }
     }
+}
+
+fn probe() -> Result<bool, String> {
+    let allowed = mac::probe_computer_audio(Duration::from_secs(1)).map_err(|e| e.to_string())?;
+    println!("{}", json!({ "computer_audio_allowed": allowed }));
+    Ok(allowed)
 }
 
 fn tone(args: &[String]) -> Result<bool, String> {

@@ -1,11 +1,15 @@
 import { describe, expect, test } from "vitest";
 import {
   dayLabel,
+  folderName,
   formatDuration,
+  formatElapsed,
+  formatFileSize,
   groupByDay,
   inputsLabel,
   noteBlocks,
   sortNewestFirst,
+  startOfFolder,
   statusLabel,
   type Recording,
 } from "./library";
@@ -139,5 +143,28 @@ describe("note text", () => {
         ],
       },
     ]);
+  });
+});
+
+describe("the recording pane", () => {
+  test("elapsed time counts hours, minutes, and seconds", () => {
+    expect(formatElapsed(0)).toBe("00:00:00");
+    expect(formatElapsed(768.4)).toBe("00:12:48");
+    expect(formatElapsed(3 * 3600 + 5)).toBe("03:00:05");
+  });
+
+  test("file size is in megabytes, like Finder", () => {
+    expect(formatFileSize(73_728_044)).toBe("73.7 MB");
+    expect(formatFileSize(44)).toBe("0.0 MB");
+  });
+
+  test("a recording folder's name gives its start", () => {
+    expect(startOfFolder("2026-09-26-1502")).toBe("2026-09-26T15:02");
+    expect(startOfFolder("2026-09-26-1502-2")).toBe("2026-09-26T15:02");
+    expect(startOfFolder("Notes")).toBeNull();
+  });
+
+  test("the folder name is the last part of the path Rust returns", () => {
+    expect(folderName("/Users/someone/Documents/Anchovy/2026-09-26-1502")).toBe("2026-09-26-1502");
   });
 });

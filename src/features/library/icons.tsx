@@ -46,6 +46,30 @@ export function SpeakerIcon(props: IconProps) {
   );
 }
 
+export function FolderIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M1.75 4.25c0-.55.45-1 1-1h3.5l1.5 1.5h5.5c.55 0 1 .45 1 1v6.5c0 .55-.45 1-1 1h-10.5c-.55 0-1-.45-1-1z" />
+    </Svg>
+  );
+}
+
+export function StopIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+export function CheckIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="m3.5 8.25 3 3 6-6.5" />
+    </Svg>
+  );
+}
+
 export function RecordDot({ className = "" }: { className?: string }) {
   return <span className={`inline-block size-2 rounded-full bg-recording ${className}`} />;
 }

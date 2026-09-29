@@ -5,7 +5,8 @@
 // would be), starting 1.5 s into a 5-second recording by the app's own
 // recording module, then
 // checks automatically that the computer-audio stream was captured and the
-// tone is in the saved file. The microphone needs a person speaking; that
+// tone is in the saved file. It also runs the first-launch computer audio
+// check, which must report the permission as given. The microphone needs a person speaking; that
 // check is manual (plan 8.9) and is only reported here.
 //
 //   npm run verify:device                  run from this terminal, unsandboxed
@@ -191,9 +192,19 @@ async function sandboxedRun(binary) {
   return { ...parsed, ok: parsed.ok && sandboxOk };
 }
 
+// The first-launch computer audio check (plan step 3): a one-second muted
+// tone from this process must reach a tap of it when the permission is given.
+function probe(binary) {
+  console.log("\n=== Computer audio check (first launch), unsandboxed");
+  const result = spawnSync(binary, ["probe"], { cwd: root, encoding: "utf8" });
+  process.stdout.write(result.stdout ?? "");
+  process.stderr.write(result.stderr ?? "");
+  return { name: "Computer audio check", ok: result.status === 0 };
+}
+
 mkdirSync(work, { recursive: true });
 const binary = build();
-const results = [await unsandboxed(binary)];
+const results = [probe(binary), await unsandboxed(binary)];
 if (sandboxed) results.push(await sandboxedRun(binary));
 
 console.log("\n=== verify:device summary");

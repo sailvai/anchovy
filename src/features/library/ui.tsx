@@ -67,3 +67,17 @@ export function StatusLabel({ status, detail }: { status: Status; detail?: strin
     </span>
   );
 }
+
+export function Progress({ value, className = "" }: { value: number; className?: string }) {
+  return (
+    <span
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(value)}
+      className={`block h-1 overflow-hidden rounded-full bg-line ${className}`}
+    >
+      <span className="block h-full rounded-full bg-accent" style={{ width: `${value}%` }} />
+    </span>
+  );
+}
