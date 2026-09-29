@@ -71,36 +71,85 @@ impl Script {
     }
 }
 
-/// `None` when the text has no letters at all.
-pub fn dominant_script(text: &str) -> Option<Script> {
-    let (mut han, mut kana, mut hangul, mut latin_words) = (0usize, 0usize, 0usize, 0usize);
+/// How much of a text each script takes. CJK characters and Latin words
+/// are counted alike.
+#[derive(Debug, Clone, Copy, Default)]
+struct Counts {
+    han: usize,
+    kana: usize,
+    hangul: usize,
+    latin_words: usize,
+}
+
+fn counts(text: &str) -> Counts {
+    let mut counts = Counts::default();
     let mut in_word = false;
     for c in text.chars() {
         match c as u32 {
-            0x3040..=0x30FF => kana += 1,
-            0xAC00..=0xD7AF => hangul += 1,
-            0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF | 0x20000..=0x2FA1F => han += 1,
+            0x3040..=0x30FF => counts.kana += 1,
+            0xAC00..=0xD7AF => counts.hangul += 1,
+            0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF | 0x20000..=0x2FA1F => {
+                counts.han += 1
+            }
             _ => {}
         }
         let latin = c.is_alphabetic() && (c.is_ascii() || ('\u{C0}'..='\u{24F}').contains(&c));
         if latin && !in_word {
-            latin_words += 1;
+            counts.latin_words += 1;
         }
         in_word = latin || (in_word && c.is_alphanumeric());
     }
-    let cjk = han + kana + hangul;
-    if cjk == 0 && latin_words == 0 {
-        None
-    } else if cjk < latin_words {
-        Some(Script::Latin)
-    } else if hangul > han && hangul >= kana {
-        Some(Script::Hangul)
-    } else if kana > 0 && kana * 4 >= han {
-        Some(Script::Kana)
-    } else {
-        Some(Script::Han)
+    counts
+}
+
+impl Counts {
+    fn dominant(&self) -> Option<Script> {
+        let Counts {
+            han,
+            kana,
+            hangul,
+            latin_words,
+        } = *self;
+        let cjk = han + kana + hangul;
+        if cjk == 0 && latin_words == 0 {
+            None
+        } else if cjk < latin_words {
+            Some(Script::Latin)
+        } else if hangul > han && hangul >= kana {
+            Some(Script::Hangul)
+        } else if kana > 0 && kana * 4 >= han {
+            Some(Script::Kana)
+        } else {
+            Some(Script::Han)
+        }
+    }
+
+    /// The part of the text written in `script`. Japanese is kana with kanji.
+    fn share(&self, script: Script) -> f64 {
+        let total = self.han + self.kana + self.hangul + self.latin_words;
+        let part = match script {
+            Script::Han => self.han,
+            Script::Kana if self.kana > 0 => self.kana + self.han,
+            Script::Kana => 0,
+            Script::Hangul => self.hangul,
+            Script::Latin => self.latin_words,
+        };
+        if total == 0 {
+            0.0
+        } else {
+            part as f64 / total as f64
+        }
     }
 }
+
+/// `None` when the text has no letters at all.
+pub fn dominant_script(text: &str) -> Option<Script> {
+    counts(text).dominant()
+}
+
+/// A meeting can switch languages. A script at least this share of the
+/// transcript counts as spoken, so the summary may be written in it.
+const SPOKEN_SHARE: f64 = 0.2;
 
 /// The language to ask for: what the transcription model reported most
 /// often, or a guess from the script.
@@ -162,8 +211,40 @@ impl From<EngineError> for SummaryError {
     }
 }
 
-/// Checks one answer. `expected` is the transcript's script; the answer must
-/// be written in it.
+/// Checks one answer against a transcript: the answer must be JSON of the
+/// right shape, written in the transcript's main script or in another script
+/// that makes up a real part of it.
+pub fn parse_for(answer: &str, transcript: &str) -> Result<Summary, String> {
+    let summary = parse(answer, None)?;
+    let spoken = counts(transcript);
+    if let (Some(main), Some(written)) = (spoken.dominant(), written_script(&summary)) {
+        if written != main && spoken.share(written) < SPOKEN_SHARE {
+            return Err(wrong_script(written, main));
+        }
+    }
+    Ok(summary)
+}
+
+fn written_script(summary: &Summary) -> Option<Script> {
+    let written = [
+        summary.summary.as_str(),
+        &summary.decisions.join(" "),
+        &summary.action_items.join(" "),
+    ]
+    .join(" ");
+    dominant_script(&written)
+}
+
+fn wrong_script(written: Script, meeting: Script) -> String {
+    format!(
+        "The answer is written in {}, but the meeting is in {}.",
+        written.name(),
+        meeting.name()
+    )
+}
+
+/// Checks one answer. `expected` is the script the answer must be written
+/// in, if any.
 pub fn parse(answer: &str, expected: Option<Script>) -> Result<Summary, String> {
     let mut text = answer.trim();
     // Models sometimes wrap JSON in a Markdown code fence. The fence adds
@@ -191,19 +272,9 @@ pub fn parse(answer: &str, expected: Option<Script>) -> Result<Summary, String> 
     if summary.summary.is_empty() {
         return Err("The summary is empty.".into());
     }
-    let written = [
-        summary.summary.as_str(),
-        &summary.decisions.join(" "),
-        &summary.action_items.join(" "),
-    ]
-    .join(" ");
-    if let (Some(expected), Some(written)) = (expected, dominant_script(&written)) {
+    if let (Some(expected), Some(written)) = (expected, written_script(&summary)) {
         if expected != written {
-            return Err(format!(
-                "The answer is written in {}, but the meeting is in {}.",
-                written.name(),
-                expected.name()
-            ));
+            return Err(wrong_script(written, expected));
         }
     }
     Ok(summary)
@@ -354,7 +425,7 @@ pub fn summarize(
     budget: usize,
     on_part: OnPart,
 ) -> Result<Summary, SummaryError> {
-    let script = dominant_script(&lines.join("\n"));
+    let transcript = lines.join("\n");
     let chunks = split(lines, budget, &|text| model.count_tokens(text))?;
     if chunks.is_empty() {
         return Err(SummaryError::Invalid("The transcript is empty.".into()));
@@ -366,7 +437,11 @@ pub fn summarize(
     let mut parts = Vec::with_capacity(count);
     for (index, chunk) in chunks.iter().enumerate() {
         let part = (count > 1).then_some((index + 1, count));
-        parts.push(ask(model, &chunk_prompt(language, chunk, part), script)?);
+        parts.push(ask(
+            model,
+            &chunk_prompt(language, chunk, part),
+            &transcript,
+        )?);
         done += 1;
         on_part(done, total);
     }
@@ -380,7 +455,7 @@ pub fn summarize(
                 parts.extend(group);
                 continue;
             }
-            parts.push(ask(model, &merge_prompt(language, &group), script)?);
+            parts.push(ask(model, &merge_prompt(language, &group), &transcript)?);
             done += 1;
             on_part(done, total);
         }
@@ -416,11 +491,11 @@ fn group(
 fn ask(
     model: &mut dyn Summarizer,
     prompt: &Prompt,
-    script: Option<Script>,
+    transcript: &str,
 ) -> Result<Summary, SummaryError> {
     let mut why = String::new();
     for attempt in 0..2 {
-        match parse(&model.complete(prompt, attempt)?, script) {
+        match parse_for(&model.complete(prompt, attempt)?, transcript) {
             Ok(summary) => return Ok(summary),
             Err(err) => why = err,
         }
@@ -547,6 +622,21 @@ mod tests {
         // English product names inside a Chinese note are fine.
         let mixed = r#"{"summary": "我们讨论了 Anchovy 的发布和 Qwen3 模型。", "decisions": [], "action_items": []}"#;
         assert!(parse(mixed, Some(Script::Han)).is_ok());
+    }
+
+    #[test]
+    fn a_mixed_meeting_may_be_summarized_in_any_language_it_really_used() {
+        let mixed = "大家好，很高兴认识大家，我叫小王。I work remotely from Berlin, and I'm \
+                     happy to join the team and learn from all of you.";
+        assert!(parse_for(ZH, mixed).is_ok());
+        assert!(parse_for(EN, mixed).is_ok());
+        // A few English terms in a Chinese meeting do not make it English.
+        let chinese = "我们讨论了 Anchovy 的发布和 Qwen3 模型，下周再测一次。";
+        assert_eq!(
+            parse_for(EN, chinese).unwrap_err(),
+            "The answer is written in Latin letters, but the meeting is in Chinese characters."
+        );
+        assert!(parse_for(ZH, "We ship on Friday and test again next week.").is_err());
     }
 
     #[test]
