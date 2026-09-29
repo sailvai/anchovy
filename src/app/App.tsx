@@ -10,9 +10,18 @@ import {
 import { NotePane } from "../features/library/NotePane";
 import { RecordingPane } from "../features/library/RecordingPane";
 import { Sidebar, type Place } from "../features/library/Sidebar";
+import { MeetingBanner } from "../features/meetings/MeetingBanner";
 import type { ComputerAudioRow } from "../features/library/Sources";
 import { ModelsScreen } from "../features/models/ModelsScreen";
 import { Onboarding } from "../features/setup/Onboarding";
+import {
+  answerMeetingPrompt,
+  meetingPrompt,
+  onMeetingPrompt,
+  onMeetingRecordFailed,
+  type MeetingAnswer,
+  type MeetingPrompt,
+} from "../ipc/meetings";
 import { onModelsChanged } from "../ipc/models";
 import {
   generateNote,
@@ -25,9 +34,11 @@ import {
 import { useOnWindowFocus } from "../features/setup/useOnWindowFocus";
 import {
   onRecordingProgress,
+  onRecordingStarted,
   recordingSources,
   startRecording,
   stopRecording,
+  type Recording as Started,
   type RecordingProgress,
 } from "../ipc/recording";
 import {
@@ -77,6 +88,8 @@ export function App() {
   const [recordError, setRecordError] = useState<string | null>(null);
   // Where each note being written is, by folder, from the pipeline.
   const [stages, setStages] = useState<Record<string, Stage>>({});
+  // The meeting prompt, while one is waiting for Record or Not now.
+  const [prompt, setPrompt] = useState<MeetingPrompt | null>(null);
 
   const refresh = useCallback(
     () =>
@@ -146,6 +159,48 @@ export function App() {
     return () => unlisten.forEach((promise) => void promise.then((fn) => fn()));
   }, [inWindow, refresh]);
 
+  // A recording shows as live however it started: Record, the banner, or
+  // the meeting notification.
+  const showStarted = useCallback(
+    (started: Started) => {
+      const folder = folderName(started.folder);
+      setLive((current) =>
+        current?.folder === folder
+          ? current
+          : {
+              folder,
+              microphone: started.microphone,
+              computerAudio: started.computer_audio === "recording" ? "allowed" : "denied",
+              progress: { seconds: 0, bytes: 0 },
+            },
+      );
+      setView({ kind: "recording", folder });
+      void refresh();
+    },
+    [refresh],
+  );
+
+  // The meeting prompt comes and goes with the meeting; Rust decides when.
+  useEffect(() => {
+    if (!inWindow) return;
+    let current = true;
+    meetingPrompt().then(
+      (waiting) => current && setPrompt((shown) => shown ?? waiting ?? null),
+      () => {},
+    );
+    const unlisten = [
+      onMeetingPrompt((next) => setPrompt(next)),
+      onRecordingStarted(showStarted),
+      onMeetingRecordFailed((reason) =>
+        setRecordError(`Anchovy couldn't start recording. ${reason}`),
+      ),
+    ];
+    return () => {
+      current = false;
+      unlisten.forEach((promise) => void promise.then((fn) => fn()));
+    };
+  }, [inWindow, showStarted]);
+
   // A note may have been Working before this window was open; ask where it
   // is. Events keep it current from then on.
   const selectedWorking =
@@ -187,16 +242,28 @@ export function App() {
     setBusy(true);
     setRecordError(null);
     try {
-      const started = await startRecording();
-      const folder = folderName(started.folder);
-      setLive({
-        folder,
-        microphone: started.microphone,
-        computerAudio: started.computer_audio === "recording" ? "allowed" : "denied",
-        progress: { seconds: 0, bytes: 0 },
-      });
-      setView({ kind: "recording", folder });
-      await refresh();
+      showStarted(await startRecording());
+    } catch (err) {
+      setRecordError(`Anchovy couldn't start recording. ${message(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Record in the banner records like Record, written as source: meeting.
+  async function answerPrompt(answer: MeetingAnswer) {
+    if (!prompt) return;
+    const { id } = prompt;
+    setPrompt(null);
+    if (answer === "not_now") {
+      await answerMeetingPrompt(id, answer).catch(() => {});
+      return;
+    }
+    setBusy(true);
+    setRecordError(null);
+    try {
+      const started = await answerMeetingPrompt(id, answer);
+      if (started) showStarted(started);
     } catch (err) {
       setRecordError(`Anchovy couldn't start recording. ${message(err)}`);
     } finally {
@@ -324,6 +391,14 @@ export function App() {
 
   return (
     <div className="flex h-screen flex-col bg-surface text-text">
+      {prompt && !live && (
+        <MeetingBanner
+          prompt={prompt}
+          canRecord={setup.can_record && !busy}
+          onRecord={() => void answerPrompt("record")}
+          onNotNow={() => void answerPrompt("not_now")}
+        />
+      )}
       {error && (
         <p role="alert" className="border-b border-line px-4 py-2 text-[12px] text-failed">
           Anchovy can't read the notes folder. {error}

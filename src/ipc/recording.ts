@@ -56,3 +56,9 @@ export function onRecordingProgress(
 ): Promise<UnlistenFn> {
   return listen<RecordingProgress>("recording-progress", (event) => handler(event.payload));
 }
+
+// Every start, including one from the meeting prompt's notification. Matches
+// `STARTED_EVENT` in recording/commands.rs.
+export function onRecordingStarted(handler: (recording: Recording) => void): Promise<UnlistenFn> {
+  return listen<Recording>("recording-started", (event) => handler(event.payload));
+}
