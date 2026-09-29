@@ -49,7 +49,12 @@ type Call = { cmd: string; args: unknown };
 
 // The window with one earlier recording. `waiting` is the prompt Rust has
 // when the window opens; `answer` is what answer_meeting_prompt returns.
-function fakeWindow({ waiting = null as MeetingPrompt | null, answer = (): unknown => null } = {}) {
+type FakeWindow = {
+  waiting?: MeetingPrompt | null | Promise<MeetingPrompt>;
+  answer?: () => unknown;
+};
+
+function fakeWindow({ waiting = null, answer = () => null }: FakeWindow = {}) {
   const calls: Call[] = [];
   let list: Recording[] = [earlier];
   mockIPC(
@@ -142,6 +147,19 @@ test("a prompt waiting when the window opens is shown", async () => {
   fakeWindow({ waiting: zoom });
   await openWindow();
   expect(await screen.findByRole("status", { name: "Meeting prompt" })).toBeInTheDocument();
+});
+
+test("a prompt that went away before the first answer arrived stays away", async () => {
+  // Rust is slow to answer the window's first question, and the prompt it
+  // describes ends in the meantime.
+  let reply: (prompt: MeetingPrompt) => void = () => {};
+  fakeWindow({ waiting: new Promise<MeetingPrompt>((resolve) => (reply = resolve)) });
+  await openWindow();
+
+  await act(() => emit("meeting-prompt", null));
+  await act(async () => reply(zoom));
+
+  expect(banner()).not.toBeInTheDocument();
 });
 
 test("the prompt does not block the window", async () => {

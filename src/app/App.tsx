@@ -184,12 +184,18 @@ export function App() {
   useEffect(() => {
     if (!inWindow) return;
     let current = true;
+    // An event is newer than the answer to this first question, even when
+    // the answer arrives later.
+    let heard = false;
     meetingPrompt().then(
-      (waiting) => current && setPrompt((shown) => shown ?? waiting ?? null),
+      (waiting) => current && !heard && setPrompt(waiting ?? null),
       () => {},
     );
     const unlisten = [
-      onMeetingPrompt((next) => setPrompt(next)),
+      onMeetingPrompt((next) => {
+        heard = true;
+        setPrompt(next);
+      }),
       onRecordingStarted(showStarted),
       onMeetingRecordFailed((reason) =>
         setRecordError(`Anchovy couldn't start recording. ${reason}`),
