@@ -92,6 +92,18 @@ fn prompt_id(request_id: &str) -> Option<u64> {
     request_id.strip_prefix(REQUEST_PREFIX)?.parse().ok()
 }
 
+/// The button behind a notification response. `default_action` is the
+/// system's identifier for a click on the notification itself.
+fn choice(action: &str, default_action: &str) -> Option<Choice> {
+    match action {
+        RECORD_ACTION => Some(Choice::Record),
+        NOT_NOW_ACTION => Some(Choice::NotNow),
+        a if a == default_action => Some(Choice::Open),
+        // Dismissed: the banner in the window still asks.
+        _ => None,
+    }
+}
+
 struct Ivars {
     on_choice: Box<dyn Fn(u64, Choice) + Send + Sync>,
 }
@@ -131,13 +143,7 @@ define_class!(
             let request = response.notification().request().identifier().to_string();
             // SAFETY: a constant NSString from UserNotifications.
             let default_action = unsafe { UNNotificationDefaultActionIdentifier }.to_string();
-            let choice = match action.as_str() {
-                RECORD_ACTION => Some(Choice::Record),
-                NOT_NOW_ACTION => Some(Choice::NotNow),
-                a if a == default_action => Some(Choice::Open),
-                // Dismissed: the banner in the window still asks.
-                _ => None,
-            };
+            let choice = choice(&action, &default_action);
             if let (Some(id), Some(choice)) = (prompt_id(&request), choice) {
                 (self.ivars().on_choice)(id, choice);
             }
@@ -154,6 +160,10 @@ fn center() -> Option<Retained<UNUserNotificationCenter>> {
 /// nothing outside an app bundle.
 pub fn install(on_choice: impl Fn(u64, Choice) + Send + Sync + 'static) {
     let Some(center) = center() else { return };
+    // Prompts from an earlier launch are over. Anchovy posts no other
+    // notifications.
+    center.removeAllDeliveredNotifications();
+    center.removeAllPendingNotificationRequests();
     let actions = [
         UNNotificationAction::actionWithIdentifier_title_options(
             &NSString::from_str(RECORD_ACTION),
@@ -186,8 +196,10 @@ pub fn install(on_choice: impl Fn(u64, Choice) + Send + Sync + 'static) {
 
 /// Shows the prompt as a notification. macOS asks for permission the first
 /// time; if notifications are not allowed, the banner in the window is the
-/// only prompt.
-pub fn post(prompt: &Prompt) {
+/// only prompt. Adding happens later, after the permission answer, so
+/// `still_showing` is asked once it is added: a prompt that went away in
+/// the meantime is taken away again.
+pub fn post(prompt: &Prompt, still_showing: impl Fn() -> bool + 'static) {
     let Some(center) = center() else { return };
     let content = UNMutableNotificationContent::new();
     content.setTitle(&NSString::from_str(&prompt.headline));
@@ -198,11 +210,20 @@ pub fn post(prompt: &Prompt) {
         &content,
         None,
     );
+    let id = prompt.id;
+    let still_showing = std::rc::Rc::new(still_showing);
     let add = center.clone();
     let then_add = RcBlock::new(move |granted: Bool, _error: *mut NSError| {
-        if granted.as_bool() {
-            add.addNotificationRequest_withCompletionHandler(&request, None);
+        if !granted.as_bool() {
+            return;
         }
+        let still_showing = still_showing.clone();
+        let then_check = RcBlock::new(move |_error: *mut NSError| {
+            if !still_showing() {
+                remove(id);
+            }
+        });
+        add.addNotificationRequest_withCompletionHandler(&request, Some(&then_check));
     });
     center.requestAuthorizationWithOptions_completionHandler(
         UNAuthorizationOptions::Alert,
@@ -227,6 +248,18 @@ mod tests {
         assert_eq!(prompt_id(&request_id(42)), Some(42));
         assert_eq!(prompt_id("meeting-prompt-x"), None);
         assert_eq!(prompt_id("other-42"), None);
+    }
+
+    #[test]
+    fn notification_buttons_map_to_choices() {
+        let default = "com.apple.UNNotificationDefaultActionIdentifier";
+        assert_eq!(choice("record", default), Some(Choice::Record));
+        assert_eq!(choice("not-now", default), Some(Choice::NotNow));
+        assert_eq!(choice(default, default), Some(Choice::Open));
+        assert_eq!(
+            choice("com.apple.UNNotificationDismissActionIdentifier", default),
+            None
+        );
     }
 
     #[test]
