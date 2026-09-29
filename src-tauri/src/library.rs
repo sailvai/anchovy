@@ -442,6 +442,7 @@ mod tests {
             status,
             asr_model: None,
             summary_model: None,
+            inputs: Vec::new(),
         }
     }
 
