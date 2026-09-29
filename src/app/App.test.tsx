@@ -401,3 +401,277 @@ test("the Models button opens the Models screen and closes it again", async () =
   fireEvent.click(button);
   expect(screen.queryByRole("heading", { name: "Models" })).not.toBeInTheDocument();
 });
+
+// --- Notes: Generate note, Working, Needs models, Failed, Retry, Regenerate
+
+const asrModel = {
+  ...defaultModel,
+  state: { kind: "ready" },
+};
+const summaryModel = {
+  ...defaultModel,
+  id: "qwen3-4b-instruct-2507-q4",
+  role: "summarize",
+  display_name: "Qwen3-4B-Instruct-2507",
+  size_bytes: 2.3e9,
+  state: { kind: "not_downloaded" },
+};
+
+// A fake library whose notes go through generate_note like the real
+// pipeline: the recording turns Working, and notes-changed says so.
+function fakeNotes(
+  initial: Recording[],
+  {
+    automatic = true,
+    models = [asrModel, { ...summaryModel, state: { kind: "ready" } }],
+    generateError = null as string | null,
+    progress = {} as Record<string, unknown>,
+  } = {},
+) {
+  let list = [...initial];
+  const calls: Call[] = [];
+  // Changes a recording's status, as the pipeline would.
+  const setStatus = (folder: string, status: "ready") => {
+    list = list.map((item) => (item.folder === folder ? { ...item, status } : item));
+  };
+  mockIPC(
+    (cmd, args) => {
+      calls.push({ cmd, args });
+      const folder = (args as { folder?: string } | undefined)?.folder;
+      if (cmd === "list_models") return { memory_bytes: 16 * 1024 ** 3, models };
+      const shared = windowCommand(cmd, ready);
+      if (shared !== undefined) return shared;
+      switch (cmd) {
+        case "list_recordings":
+          return list;
+        case "read_note":
+          return note;
+        case "note_settings":
+          return { generate_notes_automatically: automatic };
+        case "note_progress":
+          return progress;
+        case "resume_waiting_notes":
+          return null;
+        case "generate_note":
+          if (generateError) throw generateError;
+          list = list.map((item) =>
+            item.folder === folder ? { ...item, status: "working" as const } : item,
+          );
+          return null;
+      }
+    },
+    { shouldMockEvents: true },
+  );
+  return Object.assign(calls, { setStatus });
+}
+
+const generateCalls = (calls: Call[]) => calls.filter(({ cmd }) => cmd === "generate_note");
+
+test("with automatic notes off, a saved recording offers Generate note", async () => {
+  const calls = fakeNotes(recordings, { automatic: false });
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /^11:30/ }));
+
+  expect(await screen.findByText("No note yet")).toBeInTheDocument();
+  expect(
+    await screen.findByText(
+      "Automatic notes are off. Choose Generate note to write one on this Mac.",
+    ),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Generate note" }));
+
+  expect(await screen.findByText("Writing the note")).toBeInTheDocument();
+  expect(generateCalls(calls)).toEqual([
+    { cmd: "generate_note", args: { folder: "2026-09-26-1130", replace: false } },
+  ]);
+  expect(rows()).toContain("11:3018 minWorking");
+});
+
+test("while Working, the pane and the list show which step is running", async () => {
+  fakeNotes(recordings);
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /^14:10/ }));
+  expect(await screen.findByText("Writing the note")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Generate note" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+
+  await act(() =>
+    emit("note-progress", {
+      folder: "2026-09-26-1410",
+      stage: "transcribing",
+      done_seconds: 1620,
+      total_seconds: 2520,
+    }),
+  );
+  expect(
+    screen.getByText("Step 1 of 2. The audio is saved; the note appears here when it is ready."),
+  ).toBeInTheDocument();
+  expect(screen.getByText("27 of 42 min")).toBeInTheDocument();
+  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "64");
+  expect(rows()[0]).toBe("14:1042 minWorking· Transcribing");
+
+  await act(() =>
+    emit("note-progress", {
+      folder: "2026-09-26-1410",
+      stage: "summarizing",
+      done: 1,
+      total: 3,
+    }),
+  );
+  expect(
+    screen.getByText("Step 2 of 2. The audio is saved; the note appears here when it is ready."),
+  ).toBeInTheDocument();
+  expect(screen.getByText("Part 2 of 3")).toBeInTheDocument();
+  expect(rows()[0]).toBe("14:1042 minWorking· Writing summary");
+});
+
+test("a recording that turns Ready shows its note without reselecting it", async () => {
+  const fake = fakeNotes(recordings, { automatic: false });
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /^11:30/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "Generate note" }));
+  expect(await screen.findByText("Writing the note")).toBeInTheDocument();
+
+  // The pipeline finished.
+  fake.setStatus("2026-09-26-1130", "ready");
+  await act(() => emit("notes-changed", "2026-09-26-1130"));
+
+  expect(await screen.findByText("The team reviewed the October release.")).toBeInTheDocument();
+});
+
+test("Needs models names the missing model and what is already here", async () => {
+  fakeNotes(recordings, { models: [asrModel, summaryModel] });
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /^12:00/ }));
+
+  expect(await screen.findByText("The summary model is not on this Mac")).toBeInTheDocument();
+  expect(
+    screen.getByText("Anchovy starts the note as soon as the download finishes."),
+  ).toBeInTheDocument();
+  expect(screen.getByText("On this Mac")).toBeInTheDocument();
+  expect(screen.getByText("2.3 GB to download")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Download models" })).toBeInTheDocument();
+});
+
+test("a finished download starts the notes that waited for it", async () => {
+  const calls = fakeNotes(recordings, { models: [asrModel, summaryModel] });
+  render(<App />);
+  await screen.findByText("14:10");
+
+  await act(() => emit("models-changed", "qwen3-4b-instruct-2507-q4"));
+
+  expect(calls.map(({ cmd }) => cmd)).toContain("resume_waiting_notes");
+});
+
+test("Failed shows the reason and Retry starts the note again", async () => {
+  const failed: Recording[] = [
+    {
+      folder: "2026-09-26-0905",
+      start: "2026-09-26T09:05",
+      duration_seconds: 3981,
+      status: "failed",
+      reason:
+        "Not enough memory to write the summary. The summary model needs about 7.1 GB of free memory. Close other apps, then choose Retry.",
+    },
+  ];
+  const calls = fakeNotes(failed);
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /^09:05/ }));
+
+  expect(
+    await screen.findByText("Not enough memory to write the summary", { selector: "p" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      "The summary model needs about 7.1 GB of free memory. Close other apps, then choose Retry. The audio is saved and no note was written.",
+    ),
+  ).toBeInTheDocument();
+  expect(rows()).toEqual(["09:051 h 06 minFailed· Not enough memory to write the summary"]);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+
+  expect(await screen.findByText("Writing the note")).toBeInTheDocument();
+  expect(generateCalls(calls)).toEqual([
+    { cmd: "generate_note", args: { folder: "2026-09-26-0905", replace: true } },
+  ]);
+});
+
+test("Failed with a model missing offers Download models instead of Retry", async () => {
+  fakeNotes(recordings, { models: [asrModel, summaryModel] });
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /^09:05/ }));
+
+  expect(await screen.findByRole("button", { name: "Download models" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+});
+
+test("Regenerate note asks before it replaces note.md", async () => {
+  const calls = fakeNotes(recordings);
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /^16:45/ }));
+  await screen.findByText("The team reviewed the October release.");
+
+  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Regenerate note…" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Replace note.md?" });
+  expect(
+    await within(dialog).findByText(
+      "Anchovy writes a new note with Qwen3-ASR 1.7B and Qwen3-4B-Instruct-2507. Changes you made to this note, for example in Obsidian, will be lost. The audio stays.",
+    ),
+  ).toBeInTheDocument();
+
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  expect(generateCalls(calls)).toEqual([]);
+
+  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Regenerate note…" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Replace Note" }));
+
+  expect(await screen.findByText("Writing the note")).toBeInTheDocument();
+  expect(generateCalls(calls)).toEqual([
+    { cmd: "generate_note", args: { folder: "2026-09-25-1645", replace: true } },
+  ]);
+});
+
+test("a note that cannot start says why", async () => {
+  fakeNotes(recordings, {
+    generateError: "Download Qwen3-4B-Instruct-2507 in Models first.",
+  });
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /^16:45/ }));
+  await screen.findByText("The team reviewed the October release.");
+  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Regenerate note…" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Replace Note" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Download Qwen3-4B-Instruct-2507 in Models first.",
+  );
+  expect(screen.getByText("The team reviewed the October release.")).toBeInTheDocument();
+});
+
+test("Regenerate note is only offered for a note that exists", async () => {
+  fakeNotes(recordings);
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /^11:30/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "More actions" }));
+  expect(screen.queryByRole("menuitem", { name: "Regenerate note…" })).not.toBeInTheDocument();
+});
+
+test("selecting a Working recording asks where its note is", async () => {
+  const calls = fakeNotes(recordings, {
+    progress: {
+      "2026-09-26-1410": { stage: "summarizing", done: 0, total: 1 },
+    },
+  });
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /^14:10/ }));
+
+  expect(
+    await screen.findByText(
+      "Step 2 of 2. The audio is saved; the note appears here when it is ready.",
+    ),
+  ).toBeInTheDocument();
+  expect(calls.map(({ cmd }) => cmd)).toContain("note_progress");
+});

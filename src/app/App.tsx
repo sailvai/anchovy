@@ -13,6 +13,15 @@ import { Sidebar, type Place } from "../features/library/Sidebar";
 import type { ComputerAudioRow } from "../features/library/Sources";
 import { ModelsScreen } from "../features/models/ModelsScreen";
 import { Onboarding } from "../features/setup/Onboarding";
+import { onModelsChanged } from "../ipc/models";
+import {
+  generateNote,
+  noteProgress,
+  onNoteProgress,
+  onNotesChanged,
+  resumeWaitingNotes,
+  type Stage,
+} from "../ipc/notes";
 import { useOnWindowFocus } from "../features/setup/useOnWindowFocus";
 import {
   onRecordingProgress,
@@ -66,6 +75,8 @@ export function App() {
   const [live, setLive] = useState<Live | null>(null);
   const [busy, setBusy] = useState(false);
   const [recordError, setRecordError] = useState<string | null>(null);
+  // Where each note being written is, by folder, from the pipeline.
+  const [stages, setStages] = useState<Record<string, Stage>>({});
 
   const refresh = useCallback(
     () =>
@@ -120,6 +131,37 @@ export function App() {
     void refresh();
     void loadSources();
   }, [inWindow, refresh, loadSources]);
+
+  // Notes are written in the background: the list follows their status, and
+  // a finished model download starts the notes that waited for it.
+  useEffect(() => {
+    if (!inWindow) return;
+    const unlisten = [
+      onNotesChanged(() => void refresh()),
+      onNoteProgress(({ folder, ...stage }) =>
+        setStages((current) => ({ ...current, [folder]: stage })),
+      ),
+      onModelsChanged(() => void resumeWaitingNotes().catch(() => {})),
+    ];
+    return () => unlisten.forEach((promise) => void promise.then((fn) => fn()));
+  }, [inWindow, refresh]);
+
+  // A note may have been Working before this window was open; ask where it
+  // is. Events keep it current from then on.
+  const selectedWorking =
+    view.kind === "recording" &&
+    recordings?.some((item) => item.folder === view.folder && item.status === "working");
+  useEffect(() => {
+    if (!selectedWorking) return;
+    let current = true;
+    noteProgress().then(
+      (known) => current && setStages((stages) => ({ ...known, ...stages })),
+      () => {},
+    );
+    return () => {
+      current = false;
+    };
+  }, [selectedWorking]);
 
   // Coming back from System Settings: the microphone or computer audio may
   // now be allowed.
@@ -222,6 +264,12 @@ export function App() {
       ? (recordings?.find((item) => item.folder === view.folder) ?? null)
       : null;
   const place = view.kind === "place" ? view.place : null;
+  // Stages only mean something while a recording is Working.
+  const working = Object.fromEntries(
+    (recordings ?? [])
+      .filter((item) => item.status === "working" && stages[item.folder])
+      .map((item) => [item.folder, stages[item.folder]]),
+  );
   const showLive =
     live && (view.kind === "home" || (view.kind === "recording" && view.folder === live.folder));
 
@@ -246,6 +294,11 @@ export function App() {
       <NotePane
         key={selected.folder}
         recording={selected}
+        stage={working[selected.folder] ?? null}
+        onGenerate={async (replace) => {
+          await generateNote(selected.folder, replace);
+          await refresh();
+        }}
         onShowInFinder={() => showInFinder(selected.folder)}
         onMoveToTrash={async () => {
           await moveToTrash(selected.folder);
@@ -280,6 +333,7 @@ export function App() {
         <Sidebar
           recordings={recordings}
           selected={showLive ? live.folder : (selected?.folder ?? null)}
+          stages={working}
           place={place}
           now={new Date()}
           canRecord={setup.can_record && !busy && !live}

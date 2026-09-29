@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { ModelsIcon, RecordDot, SettingsIcon } from "./icons";
+import type { Stage } from "../../ipc/notes";
 import { formatDuration, groupByDay, timeOfDay, type Recording } from "./library";
+import { headline, stageLabel } from "./notes";
 import { Button, StatusLabel } from "./ui";
 
 export type Place = "models" | "settings";
@@ -10,6 +12,7 @@ export type Place = "models" | "settings";
 export function Sidebar({
   recordings,
   selected,
+  stages = {},
   place,
   now,
   canRecord,
@@ -19,6 +22,8 @@ export function Sidebar({
 }: {
   recordings: Recording[] | null;
   selected: string | null;
+  // Where each Working note is, by folder.
+  stages?: Record<string, Stage>;
   place: Place | null;
   now: Date;
   canRecord: boolean;
@@ -46,6 +51,7 @@ export function Sidebar({
                 <Row
                   key={item.folder}
                   item={item}
+                  stage={stages[item.folder]}
                   selected={item.folder === selected}
                   onSelect={() => onSelect(item.folder)}
                 />
@@ -69,10 +75,12 @@ export function Sidebar({
 
 function Row({
   item,
+  stage,
   selected,
   onSelect,
 }: {
   item: Recording;
+  stage: Stage | undefined;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -91,7 +99,13 @@ function Row({
       </span>
       <StatusLabel
         status={item.status}
-        detail={item.status === "failed" ? item.reason : undefined}
+        detail={
+          item.status === "failed"
+            ? headline(item.reason)
+            : item.status === "working" && stage
+              ? stageLabel(stage)
+              : undefined
+        }
       />
     </button>
   );

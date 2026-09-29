@@ -29,6 +29,10 @@ export const defaultCommands: FakeCommands = {
     can_record: true,
   },
   check_computer_audio: "allowed",
+  note_settings: { generate_notes_automatically: true },
+  note_progress: {},
+  generate_note: null,
+  resume_waiting_notes: null,
   // Event listeners: the interface subscribes to download progress.
   "plugin:event|listen": 0,
   "plugin:event|unlisten": null,
