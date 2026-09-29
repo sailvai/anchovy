@@ -1,0 +1,12 @@
+{
+  "language": "en",
+  "voice": "Samantha",
+  "decisions": [
+    "Keep the summary model for now, use shorter chunks, and test again next week.",
+    "The release date is October fifteenth for now; if Friday's test still finds a serious problem, push it back one week."
+  ],
+  "action_items": [
+    "Maria fixes both issues by Wednesday: the wrong duration in the list after stopping a recording, and the hard-to-read delete button text in dark mode.",
+    "Test the summary model again next week with shorter chunks."
+  ]
+}

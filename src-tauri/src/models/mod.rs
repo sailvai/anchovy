@@ -14,6 +14,7 @@ pub mod store;
 #[cfg(test)]
 mod test_server;
 
+use crate::engines::ModelFiles;
 use catalog::{Catalog, Model, Role};
 use download::{DownloadError, Progress};
 use fit::Fit;
@@ -245,6 +246,26 @@ impl Models {
         }
     }
 
+    /// The model selected for `role`, with its files on this Mac, and
+    /// whether every file passed its checksum.
+    pub fn selected_files(&self, role: Role) -> (ModelFiles, bool) {
+        let id = self.store.selected(&self.catalog, role);
+        let model = self.catalog.get(&id).expect("the selection is in the list");
+        let dir = self.store.model_dir(model);
+        let files = ModelFiles {
+            id: model.id.clone(),
+            engine: model.engine.clone(),
+            display_name: model.display_name.clone(),
+            files: model
+                .files
+                .iter()
+                .map(|file| dir.join(&file.name))
+                .collect(),
+            size_bytes: model.size(),
+        };
+        (files, self.store.is_usable(model))
+    }
+
     /// Deletes a model's files. Not allowed while it downloads.
     pub fn delete(&self, id: &str) -> Result<(), ModelsError> {
         let model = self.catalog.get(id).ok_or(ModelsError::NotInList)?;
@@ -306,6 +327,25 @@ mod tests {
             _dir: dir,
             models,
         }
+    }
+
+    #[test]
+    fn the_pipeline_gets_the_selected_models_files_and_whether_they_are_here() {
+        let s = setup(16);
+        let (model, ready) = s.models.selected_files(Role::Transcribe);
+        assert_eq!(model.id, "small");
+        assert!(!ready);
+        assert_eq!(model.files.len(), 1);
+        assert!(model.files[0].ends_with("small.gguf"));
+        assert_eq!(model.size_bytes, 64_000);
+
+        download_and_wait(&s.models, "small");
+        s.models.select("big").unwrap();
+        let (model, ready) = s.models.selected_files(Role::Transcribe);
+        assert_eq!(model.id, "big");
+        assert!(!ready, "big is not downloaded");
+        s.models.select("small").unwrap();
+        assert!(s.models.selected_files(Role::Transcribe).1);
     }
 
     fn view<'a>(view: &'a ModelsView, id: &str) -> &'a ModelView {

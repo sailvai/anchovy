@@ -130,6 +130,14 @@ export function FinderIcon(props: IconProps) {
   );
 }
 
+export function RefreshIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M13 8a5 5 0 1 1-1.46-3.54M13 2.75v2.5h-2.5" />
+    </Svg>
+  );
+}
+
 export function TrashIcon(props: IconProps) {
   return (
     <Svg {...props}>

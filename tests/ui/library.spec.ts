@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { defaultCommands, installFakeIpc } from "./fake-ipc";
+import { defaultCommands, emitFakeEvent, installFakeIpc, type FakeCommands } from "./fake-ipc";
 
 // The same recordings and note as the accepted mock in design/mock/src/data.ts.
 const recordings = [
@@ -20,7 +20,9 @@ const recordings = [
     start: "2026-09-26T09:05",
     duration_seconds: 3981,
     status: "failed",
-    reason: "Not enough memory",
+    // As the pipeline writes it; the list shows the first sentence.
+    reason:
+      "Not enough memory to write the summary. The summary model needs about 3 GB of free memory. Close other apps, then choose Retry.",
   },
   { folder: "2026-09-25-1645", start: "2026-09-25T16:45", duration_seconds: 1634, status: "ready" },
   { folder: "2026-09-25-1000", start: "2026-09-25T10:00", duration_seconds: 552, status: "saved" },
@@ -58,12 +60,65 @@ const note = {
   ],
 };
 
-async function open(page: Page, colorScheme: "light" | "dark", list: unknown[]) {
+// The shipped defaults, both on this Mac unless a test says otherwise.
+const model = (id: string, role: string, name: string, size: number, ready: boolean) => ({
+  id,
+  role,
+  display_name: name,
+  languages: [],
+  size_bytes: size,
+  min_ram_gb: 8,
+  license: "Apache-2.0",
+  fit: "recommended",
+  selected: true,
+  state: ready ? { kind: "ready" } : { kind: "not_downloaded" },
+});
+const models = (summaryReady: boolean) => ({
+  memory_bytes: 24 * 1024 ** 3,
+  models: [
+    model("qwen3-asr-1.7b", "transcribe", "Qwen3-ASR 1.7B", 2_520_744_288, true),
+    model(
+      "qwen3-4b-instruct-2507-q4",
+      "summarize",
+      "Qwen3-4B-Instruct-2507",
+      2_300_000_000,
+      summaryReady,
+    ),
+  ],
+});
+
+// The Working recording is 27 of 42 minutes into its transcript, as in the mock.
+const transcribing = {
+  folder: "2026-09-26-1410",
+  stage: "transcribing",
+  done_seconds: 1620,
+  total_seconds: 2520,
+};
+
+async function open(
+  page: Page,
+  colorScheme: "light" | "dark",
+  list: unknown[],
+  commands: FakeCommands = {},
+) {
   await page.emulateMedia({ colorScheme });
   // Day headings are relative to today: the mock's "now" is Sep 26, 15:00.
   await page.clock.setFixedTime(new Date(2026, 8, 26, 15, 0));
-  await installFakeIpc(page, { ...defaultCommands, list_recordings: list, read_note: note });
+  await installFakeIpc(page, {
+    ...defaultCommands,
+    list_recordings: list,
+    read_note: note,
+    list_models: models(true),
+    // The mock's Saved recording is waiting for Generate note.
+    note_settings: { generate_notes_automatically: false },
+    note_progress: { [transcribing.folder]: transcribing },
+    ...commands,
+  });
   await page.goto("/");
+  if (list.length > 0) {
+    await expect(page.getByRole("button", { name: /^14:10/ })).toBeVisible();
+    await emitFakeEvent(page, "note-progress", transcribing);
+  }
 }
 
 async function snap(page: Page, name: string) {
@@ -94,15 +149,38 @@ for (const colorScheme of ["light", "dark"] as const) {
     await snap(page, `library-${colorScheme}.png`);
   });
 
+  // What each note state must show, as in the mock.
+  const shows = {
+    working: "27 of 42 min",
+    "needs-models": "2.3 GB to download",
+    failed: "Retry",
+    ready: "Action items",
+    saved: "Generate note",
+  } as const;
+
   for (const [status, time] of Object.entries(selectedFor)) {
     test(`${status} recording selected, ${colorScheme}`, async ({ page }) => {
-      await open(page, colorScheme, recordings);
+      await open(page, colorScheme, recordings, {
+        list_models: models(status !== "needs-models"),
+      });
       await page.getByRole("button", { name: new RegExp(`^${time}`) }).click();
       await expect(page.getByRole("heading", { level: 1 })).toContainText(time);
-      if (status === "ready") await expect(page.getByText("Action items")).toBeVisible();
+      await expect(page.getByText(shows[status as keyof typeof shows]).first()).toBeVisible();
       await snap(page, `note-${status}-${colorScheme}.png`);
     });
   }
+
+  test(`regenerate note asks first, ${colorScheme}`, async ({ page }) => {
+    await open(page, colorScheme, recordings);
+    await page.getByRole("button", { name: /^16:45/ }).click();
+    await expect(page.getByText("Action items")).toBeVisible();
+    await page.getByRole("button", { name: "More actions" }).click();
+    await page.getByRole("menuitem", { name: "Regenerate note…" }).click();
+    await expect(page.getByRole("alertdialog", { name: "Replace note.md?" })).toBeVisible();
+    // The mock shows the dialog without keyboard focus on a button.
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await snap(page, `note-regenerate-${colorScheme}.png`);
+  });
 
   test(`more actions menu, ${colorScheme}`, async ({ page }) => {
     await open(page, colorScheme, recordings);

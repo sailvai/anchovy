@@ -40,6 +40,12 @@ objc2-core-foundation = "0.3.2"
 # A lock-free single-producer ring buffer so the audio callback never locks or
 # allocates.
 rtrb = "0.4"
+# Transcription and summaries on this Mac (plan step 6). Metal runs the models
+# on the GPU; mtmd feeds audio to Qwen3-ASR. Default features are off so the
+# build does not pick up OpenMP from outside macOS.
+llama-cpp-2 = { version = "=0.1.157", default-features = false, features = ["metal", "mtmd"] }
+# Model output arrives in token pieces that may split a UTF-8 character.
+encoding_rs = "0.8"
 
 [profile.release]
 codegen-units = 1

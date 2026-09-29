@@ -1,0 +1,15 @@
+{
+  "language": "en",
+  "voice": "Samantha",
+  "decisions": [
+    "Move the explanation above the Allow button on the permission step.",
+    "Write a short help page with pictures about where the notes are saved.",
+    "Buy the eight gigabyte test Mac this month and ask again for the sixteen gigabyte one in January.",
+    "Decide the team offsite date in the next call."
+  ],
+  "action_items": [
+    "Priya updates the design by Thursday.",
+    "Daniel writes the first draft of the help page next week.",
+    "Tom places the order for the test Mac today."
+  ]
+}

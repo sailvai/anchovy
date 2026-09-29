@@ -56,7 +56,7 @@ function StatusMark({ status }: { status: Status }) {
 
 export function StatusLabel({ status, detail }: { status: Status; detail?: string }) {
   return (
-    <span className="inline-flex min-w-0 items-center gap-1.5 text-[12px]">
+    <span className="inline-flex max-w-full min-w-0 items-center gap-1.5 text-[12px]">
       <span className={`flex w-3 shrink-0 justify-center ${statusColor[status]}`}>
         <StatusMark status={status} />
       </span>

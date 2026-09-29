@@ -9,6 +9,7 @@ use tauri::{AppHandle, Emitter, State};
 use super::core::{ComputerAudio, Recorder, Recording, Saved, PROGRESS_INTERVAL};
 use super::mac;
 use crate::library::Library;
+use crate::pipeline::{NoteSettings, Pipeline};
 use crate::setup::can_record;
 
 pub const PROGRESS_EVENT: &str = "recording-progress";
@@ -89,7 +90,19 @@ pub fn start_recording(
         .map_err(|err| err.to_string())
 }
 
+/// Stops recording. With Generate notes automatically on, the note starts
+/// right away; off, the recording stays Saved until Generate note.
 #[tauri::command]
-pub fn stop_recording(recorder: State<Arc<Recorder>>) -> Result<Saved, String> {
-    recorder.stop().map_err(|err| err.to_string())
+pub fn stop_recording(
+    recorder: State<Arc<Recorder>>,
+    pipeline: State<Arc<Pipeline>>,
+    settings: State<NoteSettings>,
+) -> Result<Saved, String> {
+    let saved = recorder.stop().map_err(|err| err.to_string())?;
+    if let Err(err) = pipeline.after_recording(&saved.folder, settings.generate_notes_automatically)
+    {
+        // The recording is saved either way; its note can be generated later.
+        eprintln!("Anchovy couldn't start the note. {err}");
+    }
+    Ok(saved)
 }
