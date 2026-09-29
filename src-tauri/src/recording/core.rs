@@ -655,11 +655,17 @@ impl Session {
     }
 }
 
-/// At most one recording at a time, shared by the interface commands.
+/// At most one recording at a time, shared by the interface commands. The
+/// computer audio check (`probe`) never overlaps a recording: Record stops a
+/// running check and waits for it, and no check starts while recording.
 #[derive(Default)]
 pub struct Recorder {
     session: Mutex<Option<Session>>,
     computer_audio: Mutex<Option<ComputerAudio>>,
+    /// Held by a running check, and by `start` until its session exists.
+    probing: Mutex<()>,
+    /// Set by `start` to cut a running check short.
+    stop_probe: AtomicBool,
 }
 
 impl Recorder {
@@ -675,6 +681,9 @@ impl Recorder {
         tick: Duration,
         on_progress: impl Fn(Progress) + Send + 'static,
     ) -> Result<Recording, RecordingError> {
+        self.stop_probe.store(true, Ordering::SeqCst);
+        let _no_probe = self.probing.lock().unwrap();
+        self.stop_probe.store(false, Ordering::SeqCst);
         let mut session = self.session.lock().unwrap();
         if session.is_some() {
             return Err(RecordingError::AlreadyRecording);
@@ -699,9 +708,17 @@ impl Recorder {
         self.session.lock().unwrap().is_some()
     }
 
-    /// Runs the computer audio check. `run` gets a `keep_going` test to poll.
+    /// Runs the computer audio check, which gets a `keep_going` test to poll
+    /// so Record can cut it short. `None` if it did not run because a
+    /// recording is running, or was cut short and its answer is not reliable.
     pub fn probe<T>(&self, run: impl FnOnce(&dyn Fn() -> bool) -> T) -> Option<T> {
-        Some(run(&|| true))
+        let _probing = self.probing.lock().unwrap();
+        if self.is_recording() {
+            return None;
+        }
+        let keep_going = || !self.stop_probe.load(Ordering::SeqCst);
+        let answer = run(&keep_going);
+        keep_going().then_some(answer)
     }
 
     /// Whether the last recording got computer audio. `None` before the

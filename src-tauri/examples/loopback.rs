@@ -79,7 +79,8 @@ fn main() {
 }
 
 fn probe() -> Result<bool, String> {
-    let allowed = mac::probe_computer_audio(Duration::from_secs(1)).map_err(|e| e.to_string())?;
+    let allowed =
+        mac::probe_computer_audio(Duration::from_secs(1), &|| true).map_err(|e| e.to_string())?;
     println!("{}", json!({ "computer_audio_allowed": allowed }));
     Ok(allowed)
 }

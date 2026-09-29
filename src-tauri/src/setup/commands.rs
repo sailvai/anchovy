@@ -58,17 +58,21 @@ pub async fn check_computer_audio(
     if !ask && !setup.state().computer_audio_asked {
         return Ok(Access::NotAsked);
     }
-    // The recording already shows what it gets.
-    if recorder.is_recording() {
-        return Ok(setup.computer_audio());
-    }
     setup
         .mark_computer_audio_asked()
         .map_err(|err| err.to_string())?;
-    let heard = blocking(|| crate::recording::mac::probe_computer_audio(PROBE_DURATION))
-        .await?
-        .map_err(|err| err.to_string())?;
-    setup.record_probe(heard);
+    // Never alongside a recording: Record cuts the check short, and none runs
+    // while recording. Either way the last answer stands.
+    let recorder = Arc::clone(&recorder);
+    let checked = blocking(move || {
+        recorder.probe(|keep_going| {
+            crate::recording::mac::probe_computer_audio(PROBE_DURATION, keep_going)
+        })
+    })
+    .await?;
+    if let Some(heard) = checked {
+        setup.record_probe(heard.map_err(|err| err.to_string())?);
+    }
     Ok(setup.computer_audio())
 }
 

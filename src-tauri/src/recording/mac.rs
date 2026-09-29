@@ -645,8 +645,9 @@ fn default_output_device() -> Result<u32> {
 /// that says, so for `duration` Anchovy plays a quiet tone into a muted tap
 /// of its own output and listens for it: a denied (or still unanswered)
 /// permission gives a tap of zeros. The first check shows the system prompt.
-/// Nothing is heard on the speakers and nothing is saved.
-pub fn probe_computer_audio(duration: Duration) -> Result<bool> {
+/// Nothing is heard on the speakers and nothing is saved. Stops early when
+/// `keep_going` turns false.
+pub fn probe_computer_audio(duration: Duration, keep_going: &dyn Fn() -> bool) -> Result<bool> {
     let output = default_output_device()?;
     let output_uid = get_string(output, kAudioDevicePropertyDeviceUID)?;
     let before_tap = input_streams(output).map(|s| s.len()).unwrap_or(0);
@@ -662,7 +663,10 @@ pub fn probe_computer_audio(duration: Duration) -> Result<bool> {
                 heard: AtomicBool::new(false),
             };
             let io = start_io(aggregate, probe, Some(probe_proc))?;
-            std::thread::sleep(duration);
+            let began = std::time::Instant::now();
+            while keep_going() && began.elapsed() < duration {
+                std::thread::sleep(Duration::from_millis(20));
+            }
             // SAFETY: an atomic read; the proc only stores to it.
             let heard = unsafe { (*io.feed).heard.load(Ordering::Relaxed) };
             stop_io(io, true)?;
