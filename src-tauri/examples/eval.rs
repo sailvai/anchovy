@@ -18,7 +18,8 @@ use std::time::Instant;
 
 use anchovy_lib::engines::llama::LlamaEngines;
 use anchovy_lib::engines::{
-    mac as memory, summary, EngineError, Engines, ModelFiles, Prompt, Summarizer, Transcriber,
+    mac as memory, summary, EngineError, Engines, Heard, ModelFiles, Prompt, Summarizer,
+    Transcriber,
 };
 use anchovy_lib::models::catalog::{Catalog, Role};
 use anchovy_lib::models::store::Store;
@@ -59,6 +60,22 @@ struct Answer {
 struct Recording {
     inner: LlamaEngines,
     answers: Arc<std::sync::Mutex<Vec<Answer>>>,
+    heard: Arc<std::sync::Mutex<Vec<Heard>>>,
+}
+
+/// Keeps what the speech model heard in each window, so a failed run still
+/// shows its transcript.
+struct RecordingTranscriber {
+    inner: Box<dyn Transcriber>,
+    heard: Arc<std::sync::Mutex<Vec<Heard>>>,
+}
+
+impl Transcriber for RecordingTranscriber {
+    fn transcribe(&mut self, samples: &[f32]) -> Result<Heard, EngineError> {
+        let heard = self.inner.transcribe(samples)?;
+        self.heard.lock().unwrap().push(heard.clone());
+        Ok(heard)
+    }
 }
 
 struct RecordingSummarizer {
@@ -83,7 +100,10 @@ impl Summarizer for RecordingSummarizer {
 
 impl Engines for Recording {
     fn transcriber(&self, model: &ModelFiles) -> Result<Box<dyn Transcriber>, EngineError> {
-        self.inner.transcriber(model)
+        Ok(Box::new(RecordingTranscriber {
+            inner: self.inner.transcriber(model)?,
+            heard: self.heard.clone(),
+        }))
     }
 
     fn summarizer(
@@ -109,6 +129,8 @@ struct Output {
     report: Option<pipeline::Report>,
     note: Option<String>,
     answers: Vec<Answer>,
+    /// Each window's text before the joins, with the language reported.
+    heard: Vec<(Option<String>, String)>,
     chunk_tokens: usize,
     wall_seconds: f64,
     peak_footprint: Option<u64>,
@@ -199,9 +221,11 @@ fn run(clip: &Path, rest: &[String]) -> Result<(), String> {
     write_state(&folder, &state).map_err(|err| err.to_string())?;
 
     let answers = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let heard = Arc::new(std::sync::Mutex::new(Vec::new()));
     let engines = Arc::new(Recording {
         inner: LlamaEngines,
         answers: answers.clone(),
+        heard: heard.clone(),
     });
     let deps = Deps {
         models: Arc::new(defaults),
@@ -231,6 +255,12 @@ fn run(clip: &Path, rest: &[String]) -> Result<(), String> {
         report,
         note,
         answers: answers.lock().unwrap().clone(),
+        heard: heard
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|h| (h.language.clone(), h.text.clone()))
+            .collect(),
         chunk_tokens,
         wall_seconds,
         peak_footprint: memory::peak_footprint(),
