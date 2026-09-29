@@ -1,0 +1,16 @@
+[package]
+name = "asr-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "MIT"
+description = "Plan step 6a spike: Qwen3-ASR through llama-cpp-2 with mtmd."
+
+# Standalone: not part of the app's Cargo project.
+[workspace]
+
+[dependencies]
+anchovy = { path = "../../src-tauri" }
+llama-cpp-2 = { version = "0.1.157", features = ["metal", "mtmd"] }
+sha2 = "0.10"
+encoding_rs = "0.8"
