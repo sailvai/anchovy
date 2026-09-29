@@ -16,6 +16,11 @@ use serde::Serialize;
 /// never ends a meeting.
 pub const SETTLE: Duration = Duration::from_secs(5);
 
+/// A meeting app that stops using the microphone for less than this, as
+/// some do while muted, is still in the same meeting as far as Not now is
+/// concerned.
+pub const MEETING_GAP: Duration = Duration::from_secs(120);
+
 /// One process in the audio system's process list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Process {
@@ -102,10 +107,13 @@ impl App {
 pub const PROMPT_BODY: &str = "Record it? Anchovy records only if you choose Record.";
 
 /// `bundle_id` is `app_id` or one of its helpers (`app_id.something`).
+/// macOS compares bundle IDs without case, and helpers do not always keep
+/// their app's case.
 fn same_app(bundle_id: &str, app_id: &str) -> bool {
-    bundle_id
-        .strip_prefix(app_id)
-        .is_some_and(|rest| rest.is_empty() || rest.starts_with('.'))
+    let (id, app) = (bundle_id.as_bytes(), app_id.as_bytes());
+    id.len() >= app.len()
+        && id[..app.len()].eq_ignore_ascii_case(app)
+        && (id.len() == app.len() || id[app.len()] == b'.')
 }
 
 /// A question that waits for Record or Not now. `id` is new for every
@@ -130,6 +138,10 @@ struct Track {
     /// Asked already, or not to be asked, for this meeting: prompted,
     /// answered, or started while Anchovy could not ask.
     settled: bool,
+    /// Answered, or started while Anchovy could not ask. Unlike a prompt
+    /// that went unanswered, this holds through a pause of less than
+    /// `MEETING_GAP`.
+    decided: bool,
 }
 
 /// Turns process snapshots into at most one prompt at a time.
@@ -140,17 +152,22 @@ pub struct Detector {
     apps: BTreeMap<App, Track>,
     prompt: Option<Prompt>,
     next_id: u64,
+    /// When each decided meeting ended, for `MEETING_GAP`.
+    decided_ended: BTreeMap<App, Instant>,
 }
 
 impl Detector {
     /// `own_pid` and `own_bundle_id` are Anchovy's, which is never a meeting.
-    pub fn new(own_pid: i32, own_bundle_id: &str) -> Self {
+    /// Prompt IDs count up from `first_id`, which should differ between
+    /// launches.
+    pub fn new(own_pid: i32, own_bundle_id: &str, first_id: u64) -> Self {
         Detector {
             own_pid,
             own_bundle_id: own_bundle_id.to_owned(),
             apps: BTreeMap::new(),
             prompt: None,
-            next_id: 1,
+            next_id: first_id,
+            decided_ended: BTreeMap::new(),
         }
     }
 
@@ -174,9 +191,12 @@ impl Detector {
                 changing_since: None,
                 started: now,
                 settled: false,
+                decided: false,
             });
         }
 
+        self.decided_ended
+            .retain(|_, ended| now.duration_since(*ended) < MEETING_GAP);
         let mut ended = Vec::new();
         for (app, track) in &mut self.apps {
             let seen = using.contains(app);
@@ -191,9 +211,15 @@ impl Detector {
             track.active = seen;
             track.changing_since = None;
             if seen {
+                // A pause, not a new meeting, if it was decided before.
+                let resumed = self.decided_ended.remove(app).is_some();
                 track.started = now;
-                track.settled = false;
+                track.settled = resumed;
+                track.decided = resumed;
             } else {
+                if track.decided {
+                    self.decided_ended.insert(*app, now);
+                }
                 ended.push(*app);
             }
         }
@@ -211,6 +237,7 @@ impl Detector {
             self.prompt = None;
             for track in self.apps.values_mut().filter(|t| t.active) {
                 track.settled = true;
+                track.decided = true;
             }
             return None;
         }
@@ -239,14 +266,18 @@ impl Detector {
     }
 
     /// Record or Not now on prompt `id`. Either way the prompt goes away and
-    /// this meeting is not asked about again. Returns false if `id` is no
+    /// this meeting, including a pause shorter than `MEETING_GAP`, is not
+    /// asked about again. Returns false if `id` is no
     /// longer the prompt, so a late answer does nothing.
     pub fn answer(&mut self, id: u64) -> bool {
-        if self.prompt.as_ref().is_some_and(|p| p.id == id) {
-            self.prompt = None;
-            true
-        } else {
-            false
+        match self.prompt.take_if(|p| p.id == id) {
+            Some(answered) => {
+                if let Some(track) = self.apps.get_mut(&answered.app) {
+                    track.decided = true;
+                }
+                true
+            }
+            None => false,
         }
     }
 
@@ -286,7 +317,7 @@ mod tests {
     impl Run {
         fn new() -> Self {
             Run {
-                detector: Detector::new(OWN_PID, OWN_ID),
+                detector: Detector::new(OWN_PID, OWN_ID, 1),
                 start: Instant::now(),
             }
         }
@@ -440,10 +471,59 @@ mod tests {
         let mut run = Run::new();
         let first = run.feed(&zoom(true), true, 0, 5).unwrap();
         run.detector.answer(first.id);
-        run.feed(&zoom(false), true, 6, 20);
+        // The meeting ends at 11 s; the next one starts more than
+        // MEETING_GAP later.
+        run.feed(&zoom(false), true, 6, 140);
 
-        let second = run.feed(&zoom(true), true, 21, 26).expect("a new prompt");
+        let second = run.feed(&zoom(true), true, 141, 146).expect("a new prompt");
         assert_ne!(second.id, first.id);
+    }
+
+    #[test]
+    fn not_now_holds_through_a_pause_such_as_mute() {
+        let mut run = Run::new();
+        let prompt = run.feed(&zoom(true), true, 0, 5).unwrap();
+        run.detector.answer(prompt.id);
+
+        // Zoom stops its input for half a minute: the meeting counts as
+        // ended at 11 s, and starts again at 46 s.
+        run.feed(&zoom(false), true, 6, 40);
+        assert_eq!(run.feed(&zoom(true), true, 41, 200), None);
+    }
+
+    #[test]
+    fn a_meeting_recorded_in_full_is_not_asked_about_after_a_pause() {
+        let mut run = Run::new();
+        run.feed(&zoom(true), false, 0, 30);
+        run.feed(&zoom(false), false, 31, 60);
+        assert_eq!(run.feed(&zoom(true), true, 61, 200), None);
+    }
+
+    #[test]
+    fn prompt_ids_start_where_the_caller_says() {
+        // A new launch starts somewhere new, so an old notification's
+        // answer cannot match a new prompt.
+        let mut detector = Detector::new(OWN_PID, OWN_ID, 1_000);
+        let start = Instant::now();
+        let mut prompt = None;
+        for second in 0..=5 {
+            prompt = detector
+                .observe(&zoom(true), true, start + Duration::from_secs(second))
+                .cloned();
+        }
+        assert_eq!(prompt.unwrap().id, 1_000);
+    }
+
+    #[test]
+    fn bundle_ids_ignore_case() {
+        assert_eq!(
+            App::from_bundle_id("company.thebrowser.browser.helper"),
+            Some(App::Arc)
+        );
+        assert_eq!(App::from_bundle_id("US.ZOOM.XOS"), Some(App::Zoom));
+        let mut run = Run::new();
+        let own = [process(502, "com.Sailvai.Anchovy.helper", true)];
+        assert_eq!(run.feed(&own, true, 0, 30), None);
     }
 
     #[test]
