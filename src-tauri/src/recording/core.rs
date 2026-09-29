@@ -655,11 +655,17 @@ impl Session {
     }
 }
 
-/// At most one recording at a time, shared by the interface commands.
+/// At most one recording at a time, shared by the interface commands. The
+/// computer audio check (`probe`) never overlaps a recording: Record stops a
+/// running check and waits for it, and no check starts while recording.
 #[derive(Default)]
 pub struct Recorder {
     session: Mutex<Option<Session>>,
     computer_audio: Mutex<Option<ComputerAudio>>,
+    /// Held by a running check, and by `start` until its session exists.
+    probing: Mutex<()>,
+    /// Set by `start` to cut a running check short.
+    stop_probe: AtomicBool,
 }
 
 impl Recorder {
@@ -675,6 +681,9 @@ impl Recorder {
         tick: Duration,
         on_progress: impl Fn(Progress) + Send + 'static,
     ) -> Result<Recording, RecordingError> {
+        self.stop_probe.store(true, Ordering::SeqCst);
+        let _no_probe = self.probing.lock().unwrap();
+        self.stop_probe.store(false, Ordering::SeqCst);
         let mut session = self.session.lock().unwrap();
         if session.is_some() {
             return Err(RecordingError::AlreadyRecording);
@@ -699,11 +708,70 @@ impl Recorder {
         self.session.lock().unwrap().is_some()
     }
 
+    /// Runs the computer audio check, which gets a `keep_going` test to poll
+    /// so Record can cut it short. `None` if it did not run because a
+    /// recording is running, or was cut short and its answer is not reliable.
+    pub fn probe<T>(&self, run: impl FnOnce(&dyn Fn() -> bool) -> T) -> Option<T> {
+        let _probing = self.probing.lock().unwrap();
+        if self.is_recording() {
+            return None;
+        }
+        let keep_going = || !self.stop_probe.load(Ordering::SeqCst);
+        let answer = run(&keep_going);
+        keep_going().then_some(answer)
+    }
+
     /// Whether the last recording got computer audio. `None` before the
     /// first recording of this run.
     pub fn last_computer_audio(&self) -> Option<ComputerAudio> {
         *self.computer_audio.lock().unwrap()
     }
+}
+
+/// The computer audio check plays this tone from Anchovy's own process into a
+/// muted tap of that process, so nothing reaches the speakers. About -60 dBFS,
+/// in case the output is not muted.
+pub const PROBE_AMPLITUDE: f32 = 0.001;
+const PROBE_FREQUENCY: f32 = 440.0;
+
+/// A sine tone for the computer audio check. Runs on the audio thread.
+pub struct Tone {
+    phase: f32,
+    step: f32,
+}
+
+impl Tone {
+    pub fn new(sample_rate: f64) -> Self {
+        Tone {
+            phase: 0.0,
+            step: std::f32::consts::TAU * PROBE_FREQUENCY / sample_rate as f32,
+        }
+    }
+
+    /// Fills one interleaved output buffer of `channels` channels; every
+    /// channel gets the same sample. Call `advance` once per IO cycle after
+    /// filling every buffer, so all buffers start at the same phase.
+    pub fn fill(&self, out: &mut [f32], channels: usize) {
+        for (i, frame) in out.chunks_mut(channels.max(1)).enumerate() {
+            let sample = PROBE_AMPLITUDE * (self.phase + self.step * i as f32).sin();
+            frame.fill(sample);
+        }
+    }
+
+    pub fn advance(&mut self, frames: usize) {
+        self.phase = (self.phase + self.step * frames as f32) % std::f32::consts::TAU;
+    }
+}
+
+/// Whether the tap's buffers, which follow the `before_tap` input buffers of
+/// the aggregate device's main sub-device, hold anything but digital silence. A denied or unanswered computer audio
+/// permission gives a tap of zeros.
+pub fn tap_heard(buffers: &[&[f32]], before_tap: usize) -> bool {
+    buffers
+        .get(before_tap..)
+        .unwrap_or_default()
+        .iter()
+        .any(|buffer| buffer.iter().any(|&sample| sample != 0.0))
 }
 
 #[cfg(test)]
@@ -1096,6 +1164,81 @@ mod tests {
     }
 
     #[test]
+    fn record_stops_a_running_computer_audio_check_and_waits_for_it() {
+        let dir = TestDir::new();
+        let recorder = Arc::new(Recorder::new());
+        let probing = Arc::new(AtomicBool::new(false));
+        let (started_tx, started_rx) = mpsc::channel();
+        let probe = {
+            let (recorder, probing) = (recorder.clone(), probing.clone());
+            thread::spawn(move || {
+                recorder.probe(|keep_going| {
+                    probing.store(true, Ordering::SeqCst);
+                    started_tx.send(()).unwrap();
+                    let began = Instant::now();
+                    while keep_going() && began.elapsed() < Duration::from_secs(5) {
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    probing.store(false, Ordering::SeqCst);
+                    began.elapsed()
+                })
+            })
+        };
+        started_rx.recv().unwrap();
+
+        let began = Instant::now();
+        recorder
+            .start(
+                dir.path(),
+                START,
+                || {
+                    // The check's tap and device are gone before the
+                    // recording's are made.
+                    assert!(!probing.load(Ordering::SeqCst));
+                    Ok(fake_capture(true, Arc::new(AtomicBool::new(false))))
+                },
+                TICK,
+                |_| {},
+            )
+            .unwrap();
+
+        assert!(
+            began.elapsed() < Duration::from_secs(1),
+            "{:?}",
+            began.elapsed()
+        );
+        // Cut short, so its answer is not used.
+        assert_eq!(probe.join().unwrap(), None);
+        recorder.stop().unwrap();
+    }
+
+    #[test]
+    fn no_computer_audio_check_runs_while_recording() {
+        let dir = TestDir::new();
+        let recorder = Recorder::new();
+        recorder
+            .start(
+                dir.path(),
+                START,
+                || Ok(fake_capture(true, Arc::new(AtomicBool::new(false)))),
+                TICK,
+                |_| {},
+            )
+            .unwrap();
+
+        let checked = recorder.probe(|_| -> bool { panic!("must not probe while recording") });
+
+        assert_eq!(checked, None);
+        recorder.stop().unwrap();
+    }
+
+    #[test]
+    fn a_check_that_runs_to_the_end_gives_its_answer() {
+        let recorder = Recorder::new();
+        assert_eq!(recorder.probe(|keep_going| keep_going()), Some(true));
+    }
+
+    #[test]
     fn the_recorder_runs_one_recording_at_a_time() {
         let dir = TestDir::new();
         let recorder = Recorder::new();
@@ -1163,6 +1306,50 @@ mod tests {
         // Still registered.
         assert!(!teardown(true, true, false).may_free_context());
         assert!(!teardown(false, false, false).may_free_context());
+    }
+
+    #[test]
+    fn the_probe_tone_is_quiet_and_not_silent() {
+        let tone = Tone::new(48_000.0);
+        let mut out = vec![0.0; 2 * 480];
+        tone.fill(&mut out, 2);
+        let peak = out.iter().fold(0f32, |peak, s| peak.max(s.abs()));
+        assert!(peak > 0.0 && peak <= PROBE_AMPLITUDE, "{peak}");
+        // Both channels of a frame carry the same sample.
+        assert!(out.chunks(2).all(|frame| frame[0] == frame[1]));
+    }
+
+    #[test]
+    fn the_probe_tone_continues_across_cycles() {
+        let mut tone = Tone::new(48_000.0);
+        let mut whole = vec![0.0; 256];
+        tone.fill(&mut whole, 1);
+        let mut first = vec![0.0; 128];
+        let mut second = vec![0.0; 128];
+        let mut split = Tone::new(48_000.0);
+        split.fill(&mut first, 1);
+        split.advance(128);
+        split.fill(&mut second, 1);
+        for (a, b) in whole[128..].iter().zip(&second) {
+            assert!((a - b).abs() < 1e-6);
+        }
+        tone.advance(256);
+    }
+
+    #[test]
+    fn only_sound_in_the_tap_buffer_counts() {
+        let silence = [0.0f32; 64];
+        let mut quiet = [0.0f32; 64];
+        quiet[10] = PROBE_AMPLITUDE / 2.0;
+        // No sub-device input, then the tap.
+        assert!(tap_heard(&[&quiet], 0));
+        assert!(!tap_heard(&[&silence], 0));
+        // A headset's microphone comes first and does not count.
+        assert!(!tap_heard(&[&quiet, &silence], 1));
+        assert!(tap_heard(&[&silence, &quiet], 1));
+        // No tap buffer at all.
+        assert!(!tap_heard(&[&quiet], 1));
+        assert!(!tap_heard(&[], 0));
     }
 
     #[test]

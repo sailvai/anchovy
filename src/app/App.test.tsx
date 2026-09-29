@@ -1,7 +1,9 @@
+import { emit } from "@tauri-apps/api/event";
 import { mockIPC, clearMocks } from "@tauri-apps/api/mocks";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { NoteView, Recording } from "../features/library/library";
+import type { SetupStatus } from "../ipc/setup";
 import { App } from "./App";
 
 beforeEach(() => {
@@ -62,14 +64,47 @@ const recordings: Recording[] = [
 
 type Call = { cmd: string; args: unknown };
 
+const notesFolder = {
+  path: "/Users/someone/Documents/Anchovy",
+  display: "~/Documents/Anchovy",
+  exists: true,
+  obsidian_vault: false,
+};
+
+// First launch done: a notes folder, the microphone and computer audio allowed.
+const ready: SetupStatus = {
+  notes_folder: notesFolder,
+  default_folder: notesFolder,
+  microphone: "allowed",
+  computer_audio: "allowed",
+  finished: true,
+  can_record: true,
+};
+
+// Answers for the commands every screen of the window uses.
+function windowCommand(cmd: string, setup: SetupStatus) {
+  switch (cmd) {
+    case "setup_status":
+      return setup;
+    case "recording_sources":
+      return { microphone: "MacBook Air Microphone", computer_audio: null };
+    case "check_computer_audio":
+      return setup.computer_audio;
+    case "list_models":
+      return { memory_bytes: 16 * 1024 ** 3, models: [] };
+  }
+}
+
 // A fake library. `move_to_trash` removes the folder, like the real one.
-function fakeLibrary(initial: Recording[]) {
+function fakeLibrary(initial: Recording[], setup: SetupStatus = ready) {
   let list = [...initial];
   const calls: Call[] = [];
   mockIPC(
     (cmd, args) => {
       calls.push({ cmd, args });
       const folder = (args as { folder?: string } | undefined)?.folder;
+      const shared = windowCommand(cmd, setup);
+      if (shared !== undefined) return shared;
       switch (cmd) {
         case "list_recordings":
           return list;
@@ -80,8 +115,6 @@ function fakeLibrary(initial: Recording[]) {
         case "move_to_trash":
           list = list.filter((item) => item.folder !== folder);
           return null;
-        case "list_models":
-          return { memory_bytes: 16 * 1024 ** 3, models: [] };
       }
     },
     { shouldMockEvents: true },
@@ -105,16 +138,159 @@ test("an empty library says so and still offers Record", async () => {
   expect(screen.getAllByRole("button", { name: "Record" })).toHaveLength(2);
   expect(screen.getByRole("button", { name: "Models" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
-  expect(calls.map(({ cmd }) => cmd)).toEqual(["list_recordings"]);
+  expect(new Set(calls.map(({ cmd }) => cmd))).toEqual(
+    new Set(["setup_status", "list_recordings", "recording_sources", "check_computer_audio"]),
+  );
 });
 
-test("Record stays unavailable until recording is built", async () => {
+test("Record is available once there is a notes folder and the microphone is allowed", async () => {
   fakeLibrary([]);
   render(<App />);
   await screen.findByText("No recordings yet");
   for (const button of screen.getAllByRole("button", { name: "Record" })) {
+    expect(button).toBeEnabled();
+  }
+});
+
+test("Record is disabled without microphone permission, and says why", async () => {
+  fakeLibrary([], { ...ready, microphone: "denied", can_record: false });
+  render(<App />);
+  await screen.findByText("No recordings yet");
+  const buttons = screen.getAllByRole("button", { name: "Record" });
+  expect(buttons).toHaveLength(2);
+  for (const button of buttons) expect(button).toBeDisabled();
+  expect(
+    screen.getByText("Anchovy needs microphone access to record. Allow it in System Settings."),
+  ).toBeInTheDocument();
+});
+
+test("Record is disabled with no notes folder: first launch asks for one", async () => {
+  const calls = fakeLibrary([], { ...ready, notes_folder: null, can_record: false });
+  render(<App />);
+  expect(await screen.findByRole("heading", { name: "Choose a notes folder" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Record" })).not.toBeInTheDocument();
+  expect(calls.map(({ cmd }) => cmd)).not.toContain("start_recording");
+});
+
+test("computer audio that is not allowed says what is missing and offers Allow", async () => {
+  fakeLibrary([], { ...ready, computer_audio: "denied" });
+  render(<App />);
+  expect(await screen.findByText("Not allowed")).toBeInTheDocument();
+  expect(screen.getByText("MacBook Air Microphone")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Allow" })).toBeInTheDocument();
+  expect(
+    screen.getByText(/The other side of online meetings will not be in the recording/),
+  ).toBeInTheDocument();
+});
+
+test("allowed computer audio shows as recorded, next to the microphone's name", async () => {
+  fakeLibrary([]);
+  render(<App />);
+  expect(await screen.findByText("Will be recorded")).toBeInTheDocument();
+  expect(screen.getByText("MacBook Air Microphone")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Allow" })).not.toBeInTheDocument();
+});
+
+const defaultModel = {
+  id: "qwen3-asr-1.7b",
+  role: "transcribe",
+  display_name: "Qwen3-ASR 1.7B",
+  languages: [],
+  size_bytes: 3.4e9,
+  min_ram_gb: 8,
+  license: "Apache-2.0",
+  fit: "recommended",
+  selected: true,
+  state: { kind: "not_downloaded" },
+};
+
+// First launch, stopped at the models screen: folder chosen, microphone
+// allowed, computer audio denied. Record starts a recording that grows until
+// Stop saves it.
+function fakeFirstLaunchThenRecording() {
+  const live = "/Users/someone/Documents/Anchovy/2026-09-26-1502";
+  let setup: SetupStatus = {
+    ...ready,
+    computer_audio: "denied",
+    finished: false,
+  };
+  let list: Recording[] = [];
+  const calls: Call[] = [];
+  mockIPC(
+    (cmd, args) => {
+      calls.push({ cmd, args });
+      if (cmd === "list_models") return { memory_bytes: 16 * 1024 ** 3, models: [defaultModel] };
+      const shared = windowCommand(cmd, setup);
+      if (shared !== undefined) return shared;
+      switch (cmd) {
+        case "list_recordings":
+          return list;
+        case "finish_setup":
+          setup = { ...setup, finished: true };
+          return null;
+        case "start_recording":
+          list = [
+            {
+              folder: "2026-09-26-1502",
+              start: "2026-09-26T15:02",
+              duration_seconds: null,
+              status: "recording",
+            },
+          ];
+          return {
+            folder: live,
+            microphone: "MacBook Air Microphone",
+            computer_audio: "not_allowed",
+          };
+        case "stop_recording":
+          list = [{ ...list[0], duration_seconds: 3, status: "saved" }];
+          return {
+            folder: live,
+            audio: `${live}/audio.wav`,
+            seconds: 3,
+            bytes: 288_044,
+            inputs: ["microphone"],
+            levels: { microphone: { peak: 0.2, rms: 0.05 }, computer: null },
+            dropped_frames: 0,
+          };
+      }
+    },
+    { shouldMockEvents: true },
+  );
+  return calls;
+}
+
+test("after Later, Record still records, shows progress, and Stop saves it", async () => {
+  const calls = fakeFirstLaunchThenRecording();
+  render(<App />);
+
+  expect(await screen.findByRole("heading", { name: "Download the models" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Later" }));
+  expect(await screen.findByRole("heading", { name: "Ready to record" })).toBeInTheDocument();
+  expect(calls.map(({ cmd }) => cmd)).toContain("finish_setup");
+  expect(calls.map(({ cmd }) => cmd)).not.toContain("download_model");
+
+  const [record] = screen.getAllByRole("button", { name: "Record" });
+  expect(record).toBeEnabled();
+  fireEvent.click(record);
+
+  const stop = await screen.findByRole("button", { name: "Stop" });
+  expect(screen.getByLabelText("Elapsed time")).toHaveTextContent("00:00:00");
+  expect(screen.getByText("MacBook Air Microphone")).toBeInTheDocument();
+  expect(screen.getByText("Not allowed")).toBeInTheDocument();
+  await act(() => emit("recording-progress", { seconds: 2.4, bytes: 230_444 }));
+  expect(screen.getByLabelText("Elapsed time")).toHaveTextContent("00:00:02");
+  expect(screen.getByText("0.2 MB · WAV, 48 kHz, 16-bit, mono")).toBeInTheDocument();
+  for (const button of screen.getAllByRole("button", { name: "Record" })) {
     expect(button).toBeDisabled();
   }
+
+  fireEvent.click(stop);
+
+  expect(await screen.findByRole("heading", { name: "2026-09-26 15:02" })).toBeInTheDocument();
+  expect(calls.map(({ cmd }) => cmd)).toContain("stop_recording");
+  expect(rows()).toEqual(["15:023 sSaved"]);
+  expect(screen.queryByRole("button", { name: "Stop" })).not.toBeInTheDocument();
 });
 
 test("the list shows newest first, grouped by day, with time, duration, and status", async () => {
@@ -208,7 +384,7 @@ test("the Models button opens the Models screen and closes it again", async () =
   mockIPC(
     (cmd) => {
       if (cmd === "list_recordings") return [];
-      if (cmd === "list_models") return { memory_bytes: 16 * 1024 ** 3, models: [] };
+      return windowCommand(cmd, ready);
     },
     { shouldMockEvents: true },
   );

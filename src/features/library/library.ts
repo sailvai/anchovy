@@ -143,3 +143,27 @@ export function noteBlocks(body: string): NoteBlock[] {
       return { kind: "paragraph", text: block };
     });
 }
+
+// Elapsed recording time as hh:mm:ss.
+export function formatElapsed(seconds: number): string {
+  const whole = Math.floor(seconds);
+  return [Math.floor(whole / 3600), Math.floor(whole / 60) % 60, whole % 60]
+    .map((part) => String(part).padStart(2, "0"))
+    .join(":");
+}
+
+// Decimal megabytes, as Finder shows file sizes.
+export function formatFileSize(bytes: number): string {
+  return `${(bytes / 1e6).toFixed(1)} MB`;
+}
+
+// "2026-09-26-1502" (maybe with "-2") as "2026-09-26T15:02".
+export function startOfFolder(folder: string): string | null {
+  const match = /^(\d{4}-\d{2}-\d{2})-(\d{2})(\d{2})(-\d+)?$/.exec(folder);
+  return match ? `${match[1]}T${match[2]}:${match[3]}` : null;
+}
+
+// Rust returns full paths; the library knows recordings by folder name.
+export function folderName(path: string): string {
+  return path.split("/").filter(Boolean).pop() ?? path;
+}

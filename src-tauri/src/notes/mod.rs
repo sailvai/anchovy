@@ -55,7 +55,7 @@ impl From<serde_json::Error> for NotesError {
 /// Writes `dest` through `tmp`: `write` fills `tmp`, which is flushed to disk
 /// and then renamed over `dest`. If anything fails, `dest` keeps its old
 /// contents (or stays absent) and `tmp` is removed.
-fn write_atomically(
+pub(crate) fn write_atomically(
     tmp: &Path,
     dest: &Path,
     write: impl FnOnce(&mut File) -> io::Result<()>,

@@ -13,6 +13,7 @@ use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 
 use serde::Serialize;
 
@@ -76,19 +77,41 @@ impl From<io::Error> for LibraryError {
     }
 }
 
+/// The recordings in the notes folder. Until the user chooses a folder on
+/// first launch there is none, and the library is empty.
 pub struct Library {
-    notes_dir: PathBuf,
+    notes_dir: RwLock<Option<PathBuf>>,
 }
 
 impl Library {
     pub fn new(notes_dir: PathBuf) -> Self {
-        Library { notes_dir }
+        Library {
+            notes_dir: RwLock::new(Some(notes_dir)),
+        }
+    }
+
+    pub fn without_folder() -> Self {
+        Library {
+            notes_dir: RwLock::new(None),
+        }
+    }
+
+    pub fn notes_dir(&self) -> Option<PathBuf> {
+        self.notes_dir.read().unwrap().clone()
+    }
+
+    /// Scans `notes_dir` from now on.
+    pub fn set_notes_dir(&self, notes_dir: PathBuf) {
+        *self.notes_dir.write().unwrap() = Some(notes_dir);
     }
 
     /// Every recording in the notes folder, newest first. A notes folder that
-    /// does not exist yet has no recordings.
+    /// does not exist yet, or has not been chosen, has no recordings.
     pub fn list(&self) -> io::Result<Vec<Recording>> {
-        let entries = match fs::read_dir(&self.notes_dir) {
+        let Some(notes_dir) = self.notes_dir() else {
+            return Ok(Vec::new());
+        };
+        let entries = match fs::read_dir(&notes_dir) {
             Ok(entries) => entries,
             Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(err) => return Err(err),
@@ -118,7 +141,7 @@ impl Library {
     pub fn path_of(&self, folder: &str) -> Result<PathBuf, LibraryError> {
         let not_found = || LibraryError::NotFound(folder.into());
         FolderName::parse(folder).ok_or_else(not_found)?;
-        let path = self.notes_dir.join(folder);
+        let path = self.notes_dir().ok_or_else(not_found)?.join(folder);
         if !path.is_dir() {
             return Err(not_found());
         }
