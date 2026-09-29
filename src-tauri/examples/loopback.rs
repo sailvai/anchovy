@@ -21,6 +21,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use anchovy_lib::notes::note::Source;
 use anchovy_lib::notes::state::{read_state, Input, Status};
 use anchovy_lib::recording::core::{Progress, Recorder};
 use anchovy_lib::recording::file_writer::WavWriter;
@@ -113,6 +114,7 @@ fn record(args: &[String]) -> Result<bool, String> {
             .start(
                 &out,
                 mac::local_now(),
+                Source::Manual,
                 || mac::start(None),
                 Duration::from_secs(1),
                 move |p| events.lock().unwrap().push(p),

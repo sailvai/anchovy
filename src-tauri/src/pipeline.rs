@@ -33,7 +33,7 @@ use crate::engines::windows::{self, Joiner, Segment, OVERLAP_SECONDS, WINDOW_SEC
 use crate::engines::{Engines, ModelFiles};
 use crate::models::catalog::Role;
 use crate::notes::folder::{Quality, StartTime};
-use crate::notes::note::{write_note, Note, Source, NOTE_FILE};
+use crate::notes::note::{write_note, Note, NOTE_FILE};
 use crate::notes::state::{read_state, write_state, Input, State, Status};
 use crate::notes::NotesError;
 
@@ -242,8 +242,7 @@ pub fn run(folder: &Path, deps: &Deps, on_stage: &mut dyn FnMut(Stage)) -> Resul
     let note = Note {
         start,
         duration_seconds: audio_seconds as u64,
-        // The meeting prompt (plan step 7) is the only other source.
-        source: Source::Manual,
+        source: state.source,
         computer_audio: state.inputs.contains(&Input::ComputerAudio),
         quality: Quality::High,
         asr_model: asr.display_name.clone(),
@@ -647,6 +646,7 @@ mod tests {
     use super::*;
     use crate::engines::{EngineError, Heard, Prompt, Summarizer, Transcriber};
     use crate::notes::folder::create_recording_folder;
+    use crate::notes::note::Source;
     use crate::notes::note::NOTE_TMP_FILE;
     use crate::notes::test_dir::TestDir;
     use crate::notes::APP_DIR;
@@ -1002,6 +1002,21 @@ mod tests {
     }
 
     // --- Ready -----------------------------------------------------------
+
+    #[test]
+    fn a_recording_from_the_meeting_prompt_writes_source_meeting() {
+        let s = setup(&[VALID]);
+        let mut state = read_state(&s.folder).unwrap();
+        state.source = Source::Meeting;
+        write_state(&s.folder, &state).unwrap();
+
+        s.pipeline.generate(&s.folder, false).unwrap();
+        s.pipeline.wait_idle();
+
+        assert_eq!(status(&s.folder), Status::Ready);
+        let text = note(&s.folder).unwrap();
+        assert!(text.contains("\nsource: meeting\n"), "{text}");
+    }
 
     #[test]
     fn a_saved_recording_becomes_a_ready_note() {

@@ -19,6 +19,7 @@ use serde::Serialize;
 use super::file_writer::WavWriter;
 use super::mixer::{Mixer, OUTPUT_RATE};
 use crate::notes::folder::{create_recording_folder, Quality, StartTime};
+use crate::notes::note::Source;
 use crate::notes::state::{write_state, Input, State, Status};
 
 /// Core Audio objects Anchovy creates (the private aggregate device) have UIDs
@@ -575,6 +576,7 @@ impl Session {
     pub fn start(
         notes_dir: &Path,
         start: StartTime,
+        source: Source,
         started: Started,
         tick: Duration,
         on_progress: impl Fn(Progress) + Send + 'static,
@@ -590,6 +592,7 @@ impl Session {
             let folder = create_recording_folder(notes_dir, &start)?;
             let mut state = State::new();
             state.inputs = computer_audio.inputs();
+            state.source = source;
             write_state(&folder, &state).map_err(|err| RecordingError::Disk(err.to_string()))?;
             let audio = folder.join(Quality::High.audio_file_name());
             let writer = WavWriter::new(BufWriter::new(File::create(&audio)?), OUTPUT_RATE)?;
@@ -677,6 +680,7 @@ impl Recorder {
         &self,
         notes_dir: &Path,
         start: StartTime,
+        source: Source,
         capture: impl FnOnce() -> Result<Started, RecordingError>,
         tick: Duration,
         on_progress: impl Fn(Progress) + Send + 'static,
@@ -688,7 +692,8 @@ impl Recorder {
         if session.is_some() {
             return Err(RecordingError::AlreadyRecording);
         }
-        let (started, recording) = Session::start(notes_dir, start, capture()?, tick, on_progress)?;
+        let (started, recording) =
+            Session::start(notes_dir, start, source, capture()?, tick, on_progress)?;
         *self.computer_audio.lock().unwrap() = Some(recording.computer_audio);
         *session = Some(started);
         Ok(recording)
@@ -996,6 +1001,29 @@ mod tests {
     const TICK: Duration = Duration::from_millis(50);
 
     #[test]
+    fn a_recording_from_the_meeting_prompt_keeps_its_source() {
+        let dir = TestDir::new();
+        let (session, recording) = Session::start(
+            dir.path(),
+            START,
+            Source::Meeting,
+            fake_capture(true, Arc::new(AtomicBool::new(false))),
+            TICK,
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(
+            read_state(&recording.folder).unwrap().source,
+            Source::Meeting
+        );
+
+        let saved = session.stop().unwrap();
+        let state = read_state(&saved.folder).unwrap();
+        assert_eq!(state.status, Status::Saved);
+        assert_eq!(state.source, Source::Meeting);
+    }
+
+    #[test]
     fn a_session_is_recording_then_saved_with_the_file_closed() {
         let dir = TestDir::new();
         let stopped = Arc::new(AtomicBool::new(false));
@@ -1003,6 +1031,7 @@ mod tests {
         let (session, recording) = Session::start(
             dir.path(),
             START,
+            Source::Manual,
             fake_capture(true, stopped.clone()),
             TICK,
             move |progress| tx.send(progress).unwrap(),
@@ -1047,6 +1076,7 @@ mod tests {
         let (session, recording) = Session::start(
             dir.path(),
             START,
+            Source::Manual,
             fake_capture(false, stopped),
             TICK,
             |_| {},
@@ -1075,6 +1105,7 @@ mod tests {
         let (session, recording) = Session::start(
             dir.path(),
             START,
+            Source::Manual,
             fake_capture_with(true, 0.0, stopped),
             TICK,
             |_| {},
@@ -1155,6 +1186,7 @@ mod tests {
         let result = Session::start(
             &missing,
             START,
+            Source::Manual,
             fake_capture(true, stopped.clone()),
             TICK,
             |_| {},
@@ -1191,6 +1223,7 @@ mod tests {
             .start(
                 dir.path(),
                 START,
+                Source::Manual,
                 || {
                     // The check's tap and device are gone before the
                     // recording's are made.
@@ -1220,6 +1253,7 @@ mod tests {
             .start(
                 dir.path(),
                 START,
+                Source::Manual,
                 || Ok(fake_capture(true, Arc::new(AtomicBool::new(false)))),
                 TICK,
                 |_| {},
@@ -1250,6 +1284,7 @@ mod tests {
             .start(
                 dir.path(),
                 START,
+                Source::Manual,
                 || Ok(fake_capture(false, flag())),
                 TICK,
                 |_| {},
@@ -1259,6 +1294,7 @@ mod tests {
         let second = recorder.start(
             dir.path(),
             START,
+            Source::Manual,
             || panic!("must not start a second capture"),
             TICK,
             |_| {},
@@ -1280,6 +1316,7 @@ mod tests {
         let result = recorder.start(
             dir.path(),
             START,
+            Source::Manual,
             || Err(RecordingError::NoMicrophone),
             TICK,
             |_| {},
