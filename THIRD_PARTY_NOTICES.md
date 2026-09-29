@@ -9,6 +9,7 @@ Anchovy includes or is built with the following software. Add a line when you ad
 | Geist           | SIL Open Font License 1.1 | [vercel/geist-font](https://github.com/vercel/geist-font), bundled through `@fontsource-variable/geist` |
 | reqwest         | MIT or Apache-2.0         | [seanmonstar/reqwest](https://github.com/seanmonstar/reqwest), model downloads                          |
 | RustCrypto sha2 | MIT or Apache-2.0         | [RustCrypto/hashes](https://github.com/RustCrypto/hashes), model checksums                              |
+| objc2           | Zlib, Apache-2.0, or MIT  | [madsmtm/objc2](https://github.com/madsmtm/objc2), Move to Trash and Show in Finder                     |
 
 Models are not bundled. The user downloads them from the list in `src-tauri/resources/models.json`:
 
