@@ -1,0 +1,220 @@
+Tingting: 好，人都到齐了，我们开始今天的月度计划会。这次会议时间比较长，大概一个小时，分成几块来讲。先用中文过一下上个月的进度和下个版本的范围，然后海外的同事加入，用英文讨论新手引导和设计评审，再一起看工程上的几个问题，最后回顾一下决定和待办。大家有问题随时打断我。
+Tingting: 先说上个月的情况。我们一共合了四十多个改动，修了二十几个问题。录音这块比较稳定了，上个月内部测试的同事一共录了一百多段会议，只有两段出了问题。一段是电脑合上盖子以后录音停了，另一段是长时间录音在后台被系统暂停。前一个是预期的行为，我们在界面上已经加了提示。后一个是真正的问题，等一下具体说。
+Tingting: 转写这块，速度比我们预想的要好。一小时的录音，在内部测试用的笔记本上，大概五到七分钟能转完。准确率方面，普通话和英文都还可以，但是说话人一多、背景有噪音的时候，错字明显变多。这个问题我们短期内不打算专门去解决，先把基本流程做稳。
+Tingting: 摘要这块，问题主要是速度和内存。内存小的电脑上，摘要要分成好几段来写，再合并起来，整体会慢一些。有同事反馈说，摘要里偶尔会出现会议上没提到的内容，这个我们非常重视，后面工程那一块会专门讨论。
+Tingting: 好，接下来说下个版本的范围。原来的计划里，十一月的版本要做两件大事：一个是云同步，一个是本地导出。我这周和几个人分别聊了一下，大家的意见比较一致，觉得云同步的风险太大。一方面是隐私，我们一直跟用户说录音和笔记都只留在自己的电脑上，突然加一个云同步，很多用户会担心。另一方面是工作量，云同步要做账号、要做冲突处理、要做服务器，这些我们现在都没有人手。
+Tingting: 本地导出就简单很多。用户可以把笔记导出成普通的文本文件，或者直接复制到别的笔记软件里。这个需求在用户反馈里出现得也最多。所以我的建议是，十一月的版本先不做云同步，只做本地导出。云同步放到明年再评估。大家有没有不同意见？
+Tingting: 陈静刚才在聊天里说同意，刘洋也说同意。好，那这一条就定下来了：十一月的版本先不做云同步，只做本地导出。
+Tingting: 那导出功能的设计谁来做？陈静说她来。导出的界面不复杂，主要是选格式和选位置两步。陈静说这周五之前可以把导出功能的设计稿发给大家。好，那就这么定，陈静这周五之前把导出功能的设计稿发给大家，大家看完在群里留意见就行，不用再单独开会。
+Tingting: 下一件事是测试版的时间。原来定的是十一月三号发测试版。但是刚才说的后台暂停的问题还没修好，而且导出功能也需要时间。我和刘洋算了一下，如果按原来的日期，测试的时间只剩三天，太紧了。我的建议是，测试版推迟一周，改到十一月十号发布。这样测试有整整一周的时间。
+Tingting: 刘洋问，推迟一周会不会影响后面的正式版。我的看法是影响不大。正式版本来就留了两周的余量，推迟一周以后，还剩一周余量，够用。大家还有别的顾虑吗？没有的话，这一条也定下来：测试版推迟一周，改到十一月十号发布。
+Tingting: 然后具体说一下后台暂停的问题。现象是这样的：用户开始录音以后，把窗口最小化，去做别的事情，大概四十分钟以后，系统觉得这个应用很久没有交互，就把它放到低优先级，录音的线程被暂停了。等用户回来的时候，录音其实少了一大段，但是界面上看起来一切正常。这个问题很严重，因为用户根本不知道丢了内容。
+Tingting: 刘洋已经找到了原因，是我们没有告诉系统这个应用正在做一件用户在等的事情。修起来不难，但是要在好几种电脑上测一遍，特别是内存小的那几台。刘洋说下周二之前可以提交。那这个就交给刘洋：修好长录音在后台被系统暂停的问题，下周二之前提交。
+Tingting: 另外我想强调一下，这类问题以后都要先写一个能重现问题的测试，再去修。上个月有两个问题修好以后又出现了，就是因为没有测试。刘洋这次修的时候，也请先加一个长时间录音的测试，哪怕这个测试要跑很久，我们可以只在发布前跑。
+Tingting: 再说一下内部测试的安排。现在内部测试的同事一共有十二个人，分布在三个城市。大家用的电脑差别比较大，有新的也有旧的，这个对我们其实是好事。我希望下个月每个人至少录五段真实的会议，录完以后在反馈表里写一下转写和摘要的感受。不过要注意，真实的会议录音只留在自己的电脑上，不要发到群里，也不要上传到任何地方。反馈表里只写感受和问题，不要贴会议内容。
+Tingting: 有同事问，能不能把有问题的录音发给开发同事看一下，方便定位问题。原则上不行。如果真的需要，请自己录一段不涉及任何真实会议内容的测试录音，比如念一段新闻，然后看能不能重现问题。这一点请大家务必遵守。
+Tingting: 还有一个小事情。我们的反馈表现在有点乱，有的人写在表格里，有的人发在群里，有的人私下发给我。以后统一写在反馈表里，这样我们整理起来方便。群里只用来讨论和通知。
+Tingting: 好，中文部分大概就这些。我总结一下刚才的两个决定：第一，十一月的版本先不做云同步，只做本地导出；第二，测试版推迟一周，改到十一月十号发布。两个待办：陈静这周五之前把导出功能的设计稿发给大家；刘洋下周二之前修好后台暂停的问题。接下来海外的同事加入，我们换成英文。
+Samantha: Hi everyone, thanks for having us. Can you all hear me? Great. Daniel is here too, and Priya will join in a few minutes. We want to use this part of the meeting for the onboarding review and the design review, and then hand it back to you for the engineering topics.
+Daniel: Hello from London. Before we start, a quick note: I have the latest build on my laptop, so if anyone wants me to check something on screen while we talk, just ask.
+Samantha: Let's start with onboarding. Right now a new user sees five screens before they can record anything. The first screen explains what the app does. The second asks for the notes folder. The third asks for microphone access. The fourth asks for permission to record computer audio. The fifth explains the models and starts the download. In our usability sessions last month, most people found this too long. Several of them stopped on the third or fourth screen and asked whether they had done something wrong.
+Daniel: I watched the recordings of those sessions, the screen recordings I mean, not any meetings. The pattern was very clear. People read the first screen carefully, skimmed the second, and by the fourth screen they were clicking through without reading. One person closed the window on the fifth screen because they thought the download was an advertisement.
+Samantha: So our proposal is to cut the flow down to three screens. The first screen explains the app and asks for the notes folder together. The second screen asks for the microphone, and it offers computer audio as an option on the same screen, with one sentence about why we need it. The third screen starts the model download and lets people leave it running in the background.
+Daniel: The key change is that the model download no longer blocks anything. You can close the onboarding window and the download continues. When it finishes, the app tells you it's ready. If you start a recording before the models are ready, the recording still works, and the note is written later.
+Samantha: We also want to remove the explanation screen about the models. Most people don't care which model we use. The ones who care can find it in the settings. What do you think?
+Tingting: I think this makes sense. My only question is about the computer audio permission. If we put it on the same screen as the microphone, will people understand that it's optional?
+Samantha: Good question. In the new design the microphone button is the main button, and computer audio is a checkbox below it, turned off by default. The text says: also record the other people in your call. We tested this wording with four people and all four understood it.
+Daniel: And if someone skips it, the recording is labeled microphone only, so they will know later why the other side of the call is missing.
+Tingting: Okay, then I'm happy with it. Does anyone disagree?
+Samantha: I'll take the silence as a yes. So we're agreed: the onboarding flow will have three screens instead of five.
+Samantha: Next is the copy. With fewer screens, every sentence matters more. Priya has written most of our interface text so far, and she's the best person to do the new version. She told me before the meeting that she can do it this week.
+Daniel: Priya just joined, by the way. Priya, we were talking about the onboarding copy.
+Samantha: Priya says hi, and she confirms she will write the new onboarding copy and share it by Thursday. She wants to keep each screen under forty words, and she'll send two versions of the computer audio sentence so we can pick one.
+Daniel: Let me add one thing about the copy. Please avoid technical words like model, token, or inference on these screens. In the sessions, the word model confused almost everyone. Some people thought it meant a template. Download the speech engine, or something similar, would be clearer. But I'll leave that to Priya.
+Samantha: Now the design review. We have three items. The first is the recording screen, the second is the note view, and the third is dark mode.
+Samantha: The recording screen is mostly done. The big red button is still the main thing on the screen, and the timer is right below it. We added a small label that says which inputs are being recorded. We also made the stop button harder to press by accident, because two people in testing stopped a recording when they meant to pause it.
+Daniel: On the note view, the main change is the transcript. Right now it's one long block of text with timestamps. We want to break it into paragraphs every few minutes, and make the timestamps smaller and gray. We're not changing the file format, only how it looks in the app.
+Samantha: And now dark mode. This is the hard one. When we started the dark mode redesign, we thought it would take one week. It has already taken three weeks, and it's still not right. The contrast on the note view is too low, the red record button looks brown on some screens, and every new screen we add needs another round of work.
+Daniel: My honest opinion is that we should stop. The current dark mode is not beautiful, but it works and it's readable. The redesign is a nice to have. If we keep going, it will push other work back, and nobody has asked for it except us.
+Samantha: I agree with Daniel. I would rather ship the onboarding changes properly than ship half of a dark mode redesign.
+Tingting: How much work is already done? I don't want to throw it away.
+Daniel: Nothing gets thrown away. The work is in a separate branch, and the colors are written down in the design file. We can come back to it at any time.
+Tingting: Then I agree. Let's drop it for now.
+Samantha: Good. So the decision is: we will drop the dark mode redesign from this release and revisit it in January. I'll write that in the design file so nobody picks it up by mistake.
+Samantha: One more thing on design. We need an accessibility review before the release. Last time we did it at the very end, and we found problems too late to fix. This time we want to do it earlier. We need a few test devices set up with VoiceOver and larger text, and we need them ready before the review starts.
+Daniel: Tom usually handles the test devices. He's not in this meeting, but I talked to him yesterday. He said he can set them up this weekend.
+Samantha: So Tom will set up the test devices for the accessibility review next Monday. I'll send him a note after this meeting so he has the list of settings we need.
+Daniel: While we're on accessibility, the stop button change we just talked about needs to work with VoiceOver too. If the button is harder to press with a mouse, it shouldn't become harder to find with a screen reader. Let's include it in the review.
+Samantha: Agreed. I'll add it to the list.
+Samantha: Let me also give a quick update on the website, since a few people asked. The website will not change for this release, except for the download page, which needs the new version number and the new screenshots. We'll take the screenshots after the onboarding changes are in, so they match the real app.
+Daniel: And the screenshots will use sample notes that we wrote ourselves, not real meetings. We did that last time as well.
+Samantha: Right. Okay, I think that's everything from the design side. To sum up: two decisions, three screens for onboarding, and no dark mode redesign until January. Two action items: Priya writes the onboarding copy by Thursday, and Tom sets up the accessibility test devices by next Monday. Should we stay on for the engineering part?
+Tingting: Yes, please stay. The next part is a mix of Chinese and English, because some of the engineering discussion is easier in Chinese. I'll translate the important parts.
+Tingting: 好，工程这块我们中英文混着说。第一个问题是模型下载。上个月有不少 feedback 说下载失败，特别是网络不稳定的时候。现在的逻辑是，download 失败了就直接弹一个 error，用户只能自己点 retry。很多人不知道要点 retry，以为 app 坏了。
+Samantha: How often does it fail? Do we have a number?
+Tingting: 内部测试的数据是，大概每十次下载会失败一次，大部分是 timeout，就是网络断了一下又连上。这种情况其实自动重试一下就好了，不需要打扰用户。
+Daniel: That matches what I saw. In the usability sessions, the download failed once, on hotel wifi. The person didn't understand the error message at all.
+Tingting: 所以我的建议是：模型下载失败的时候，先自动 retry 两次，两次都失败了，再弹出 error message 告诉用户。每次 retry 之间等几秒。已经下载的部分保留下来，不用从头开始。
+Samantha: That sounds good to me. What about the case where the file is complete but the checksum doesn't match?
+Tingting: 这个不一样。checksum 不对，说明文件本身有问题，retry 下载同一个地址大概率还是一样的结果。这种情况我们直接删掉文件，提示用户，不自动 retry。
+Daniel: Makes sense. Retry for network errors, no retry for a bad file.
+Tingting: 对。那这一条就定下来：模型下载失败的时候，先自动重试两次，再提示用户。checksum 错误除外。
+Tingting: 这个改动的 code 由王磊来写，他上周已经开始了。王磊说这周可以提 PR。Maria 之前写过下载模块，所以我想请 Maria 来 review。Maria 今天不在，但是她在群里说了没问题。
+Samantha: I can pass that on to Maria as well, we're in the same office.
+Tingting: 谢谢。那就这样：Maria will review the retry logic PR before Wednesday. 这个 PR 不大，应该一两个小时就能看完。
+Tingting: 第二个问题是内存。刚才中文部分说过，内存小的电脑上，摘要要分段写再合并，比较慢。另外我们发现，转写模型卸载以后，内存不是马上就释放的，要等几秒钟。在八个 G 的电脑上，如果转写模型的内存还没释放完，就去加载摘要模型，有可能内存不够，整个流程就失败了。
+Daniel: Do we already wait for the memory to come back before loading the summary model?
+Tingting: 现在是等了，最多等五秒。但是我们没有一个稳定的 benchmark，不知道在不同的电脑上到底要等多久，也不知道一小时的录音会不会比短录音更慢。所以我想要一个 memory 的 benchmark，用同一段一小时的测试录音，在几台不同内存的电脑上跑，记下峰值内存和每一步的时间。
+Samantha: Where does the test recording come from? It can't be a real meeting.
+Tingting: 对，不能用真实的会议。我们用电脑自带的语音朗读一份写好的稿子，中文英文都有，生成一段一个小时的音频。稿子和生成的脚本放在代码里，音频不放进去，每次跑的时候现场生成。
+Daniel: I like that. It's the same for everyone, and nobody's private meeting ends up in the repository.
+Tingting: 王磊说他 this week 可以写这个 benchmark。他的意思是先在他自己的电脑上跑通，然后周四的 standup 上给大家看结果。王磊，你确认一下？好，他在聊天里说 OK。那这个待办就是：王磊 this week 写一个 memory 的 benchmark，周四的 standup 上给大家看结果。
+Samantha: One question about the benchmark. Will it also check the quality of the summary, or only speed and memory?
+Tingting: 都要看。速度和内存是一部分，另外还要看摘要里的每一个决定和每一个待办，是不是都能在转写里找到原文。之前有同事反馈说摘要里有会上没说过的内容，我们要用这个 benchmark 来抓这种问题。
+Daniel: How do you check that automatically? The summary doesn't copy sentences word for word.
+Tingting: 我们的做法比较简单。把摘要里的每一条拆成词，英文按单词，中文按字，然后去转写里找，看在同一段话附近能不能找到大部分的词。如果一条待办里的人名和时间在转写里根本找不到，那就说明是模型自己编的。这个办法不完美，但是能抓到最明显的问题。
+Samantha: That's a reasonable start. Maybe later we can add a person who reads a few summaries each release.
+Tingting: 可以，这个我记下来，下次再讨论。
+Tingting: 第三个问题是转写的切段。我们现在是每三十秒切一段，相邻两段有三秒的重叠，然后把重叠部分重复的字去掉。短录音没有问题，但是一小时的录音有一百多个接缝，我们不确定每个接缝都处理对了。如果去重去多了，就会丢字；去少了，就会有重复的句子。
+Daniel: That sounds like something the same benchmark can check.
+Tingting: 对，同一个 benchmark 里顺便检查一下：把转写和原稿对齐，看每个接缝附近有没有丢字或者重复。有问题就打出来是哪个时间点。
+Samantha: Do you have any evidence of problems at the joins today?
+Tingting: 目前没有看到。短的测试录音只有两三个接缝，都是对的。一小时的还没有跑过，所以才要跑。
+Tingting: 还有一个小问题，是 log。现在出错的时候，log 里只有一句 error，看不出是哪一步出的错。我希望每一步开始和结束都记一行，包括用了多长时间。当然，log 里不能有转写的内容，也不能有文件名里的会议标题，只记步骤和时间。
+Samantha: Does the log stay on the Mac?
+Tingting: 对，log 只在本地，不上传。用户要反馈问题的时候，可以自己看一下 log，决定要不要发给我们。
+Daniel: Good. I think that covers engineering from my side. Should we take a short break?
+Tingting: 不用休息了，我们继续。接下来是用户反馈，这部分用中文说，海外的同事可以先听一下，最后回顾的时候我再用英文总结。
+Tingting: 好，接下来说用户反馈。上个月我们一共收到了两百多条反馈，来自内部测试的同事和一小部分外部的测试用户。陈静把这些反馈大致分了一下类，我先说一下大的情况，再挑几个重点讨论。
+Tingting: 按数量来说，排第一的是找不到笔记文件夹。很多用户录完音以后，不知道笔记存在哪里。他们在应用里能看到笔记，但是想在别的软件里打开的时候，就找不到文件了。有的人去系统的下载文件夹里找，有的人去文档文件夹里找，还有的人以为笔记存在网上。这一类反馈有四十多条，比第二名多了一倍。
+Tingting: 排第二的是摘要的长度。有人觉得摘要太短，有人觉得太长。这个很难让所有人都满意，我的想法是暂时不改，等以后看看能不能让用户自己选。
+Tingting: 排第三的是转写里人名写错。这个是意料之中的，语音识别对人名本来就不太准，特别是不常见的名字。短期内我们没有好办法，可以考虑以后加一个自定义词表，让用户把常用的人名和术语写进去。这个先记下来，不放进下个版本。
+Tingting: 排第四的是录音的时候不知道有没有在录。有的用户说，窗口最小化以后，看不到任何提示，不知道录音是不是还在进行。其实菜单栏上有一个小红点，但是很多人没注意到。这个问题我觉得可以在设计上改进，比如红点做得明显一点，或者在开始录音的时候提示一下菜单栏的位置。
+Tingting: 排第五的是安装以后第一次打开太慢。这个主要是模型下载的问题，刚才工程部分已经讨论过了，新手引导改成三个页面以后，下载不再挡住用户，应该会好很多。
+Tingting: 我们重点说一下第一个问题，就是找不到笔记文件夹。我看了一下这些反馈，大部分用户其实在第一次打开的时候已经选过文件夹了，但是过了几天就忘了。这很正常，谁也不会记得自己几天前选的文件夹在哪里。
+Tingting: 我和陈静讨论了几个办法。第一个办法是在设置里显示文件夹的位置。这个我们已经有了，但是用户不会去设置里找。第二个办法是在每条笔记上加一个显示所在位置的按钮。这个有用，但是要先打开一条笔记才能看到。第三个办法最直接，就是在首页上加一个按钮，写着打开文件夹，点一下就在访达里打开笔记文件夹。
+Tingting: 我倾向于第三个办法，因为最简单，用户一眼就能看到。按钮不需要很大，放在首页右上角就可以。陈静也同意。大家有没有别的想法？
+Tingting: 刘洋问，首页的空间本来就不多，再加一个按钮会不会太挤。我的看法是，这个按钮比现在首页上的一些东西更重要。比如首页上现在有一个显示本月录音总时长的数字，几乎没有人看，可以把它拿掉，把位置让给打开文件夹的按钮。
+Tingting: 好，那就这么定：用户反馈里最多的问题是找不到笔记文件夹，所以首页加一个打开文件夹的按钮。本月录音总时长那个数字拿掉。
+Tingting: 另外，反馈的整理方式也要改一下。现在两百多条反馈都堆在一个表格里，有些重复，有些已经解决了，有些写得很模糊，看不出具体是什么问题。陈静说她可以先整理一遍，把最近的反馈按问题归类，去掉重复的，标出已经解决的。
+Tingting: 两百多条一次整理完工作量太大。我的建议是先整理前五十条，就是最近一个月的，看看归类的方法好不好用，再决定剩下的怎么处理。陈静觉得可以。那这个待办就是：陈静整理前五十条用户反馈，下周一发到群里。
+Tingting: 还有几条反馈我觉得值得单独说一下。有一个用户说，他在火车上录了一段会议，网络一直断断续续，但是转写和摘要都正常完成了。他说这是他第一次用一个不需要联网的会议记录工具，觉得很安心。这正是我们想要的效果，所有的处理都在自己的电脑上完成。
+Tingting: 另一个用户说，他们公司的规定是会议录音不能离开公司的电脑，所以之前一直不能用会议记录工具。我们的应用正好符合这个规定。他问能不能提供一份说明，讲清楚应用在什么时候会联网、联网做什么，方便他交给公司的安全部门审核。
+Tingting: 这个需求很合理，而且写起来不难。我们本来就只有两个地方会联网：下载模型，和检查更新。我建议在网站上加一页说明，把这两个地方写清楚，包括连接的是哪些地址。这件事我自己来做，不单独列成待办了，下个版本发布之前完成。
+Tingting: 还有一个用户反馈说，他的电脑是好几年前的，内存只有八个 G，转写一小时的录音用了二十多分钟，摘要又用了十几分钟。他问这是不是正常的。说实话，这个速度在旧电脑上是正常的，但是我们应该在界面上说清楚，比如在处理的时候显示大概还要多久，而不是只显示一个转圈的图标。
+Tingting: 刘洋说，转写的进度其实我们已经知道了，因为是一段一段转的，可以按已经转完的时长算出百分比。摘要的进度也可以按段来算。那就把进度显示做进下个版本，具体的设计陈静在做导出设计的时候一起考虑一下。
+Tingting: 最后一类反馈是关于语言的。有几个用户说，他们开会的时候中文和英文混着说，转写基本正确，但是摘要有时候全是中文，有时候全是英文，他们希望摘要的语言和会议的主要语言一致。这个在上个版本里已经改过一次，现在的规则是，摘要可以用转写里的主要语言，也可以用占比比较高的另一种语言。我们会继续观察。
+Tingting: 好，用户反馈就说到这里。我总结一下：一个决定，首页加一个打开文件夹的按钮；一个待办，陈静整理前五十条用户反馈，下周一发到群里。其他的几件事，进度显示和联网说明，也会放进下个版本，但是不单独列成待办。
+Tingting: 在换成英文之前，还有两件小事想听听大家的意见，今天也不用做决定。
+Tingting: 第一件是快捷键。有几个用户说，希望能用键盘开始和停止录音，不用每次都去点按钮。特别是开视频会议的时候，会议软件占了整个屏幕，要切换到我们的窗口才能点录音，很不方便。如果有一个全局的快捷键，在任何地方按一下就能开始录音，会方便很多。
+Tingting: 但是全局快捷键也有问题。第一，很容易和别的软件冲突，用户按了一下，结果两个软件都有反应。第二，也是更重要的，用户可能不小心按到，在不知道的情况下开始录音。我们一直强调，不会在用户不知情的情况下录音，所以这个要非常小心。
+Tingting: 刘洋的想法是，快捷键可以有，但是默认关闭，用户要在设置里自己打开，自己选按键。而且每次用快捷键开始录音的时候，屏幕上都要出现一个明显的提示，菜单栏的红点也要亮起来。陈静补充说，停止录音的快捷键可以默认打开，因为停止不会带来隐私的问题。
+Tingting: 这些想法我觉得都很合理，但是这个功能不在下个版本的范围里，我们下个月再讨论要不要放进第一季度。
+Tingting: 第二件是录音文件的大小。现在一小时的录音大概有三百多兆，因为我们用的是没有压缩的格式，音质最好，转写也最准。有用户说，他们的电脑硬盘比较小，录了几十个小时以后，空间就不够了。
+Tingting: 一个办法是转写完以后，把录音压缩成小一点的格式，大概能小到原来的十分之一。缺点是，如果以后想用更好的模型重新转写，压缩过的录音效果会差一点。另一个办法是让用户自己选，转写完以后是保留原始录音、压缩，还是直接删掉录音只留笔记。
+Tingting: 我个人倾向于让用户自己选，默认是保留原始录音，因为这样最安全，不会丢东西。但是这涉及到设置页面的设计，还有笔记文件里怎么标明录音已经被压缩或者删掉了，要想清楚。陈静说她可以在做导出设计的时候顺便想一想，但是不作为这周的任务。
+Tingting: 好，这两件事就先说到这里，大家有想法可以在群里继续讨论。
+Tingting: 接下来是测试计划和招聘，这部分主要是海外团队负责，我们换回英文。
+Samantha: Thanks. This part is about testing and hiring. Sam leads testing on our side, and he asked me to present because he's on a train with a bad connection. He may jump in if the connection allows.
+Samantha: Let's start with the testing plan for the release. Last release, we tested mostly with short recordings, five or ten minutes each. That was a mistake. Two of the bugs our users found were only visible in long recordings. One was the background pause that was discussed earlier in Chinese. The other was that the transcript view became very slow when it had more than a thousand lines.
+Daniel: The second one surprised me. We never thought about the transcript view, because the transcript is just text. But a one-hour meeting has a lot of text, and the view was measuring every line again each time you scrolled.
+Samantha: Right. So the lesson is that short recordings don't tell us enough. Real meetings are often an hour long, sometimes longer. Our tests should look like real use.
+Samantha: Here is the proposal. Before any release candidate ships, someone records one full hour on an eight gigabyte Mac, the smallest machine we support. They let the app transcribe and summarize it, and they check four things. First, the recording has no gaps. Second, the transcript is complete and has no repeated or missing sentences where the pieces are joined. Third, the summary finishes and every decision and action item can be found in the transcript. Fourth, the app stays responsive the whole time.
+Daniel: One hour on an eight gigabyte Mac is slow. Transcription alone can take twenty minutes, and the summary takes more. Do we really want to do that for every release candidate?
+Samantha: I think we have to. The eight gigabyte Macs are exactly where things break. Memory is tight, and the system is more likely to pause or kill the app. If we only test on fast machines, we'll keep shipping bugs that only our users see.
+Tingting: I agree with Samantha. It costs an hour or two, but a bad release costs much more. And the recording doesn't need a person to talk for an hour. We can play the synthetic test recording that Wang Lei is building for the benchmark.
+Samantha: That's a great point. The synthetic recording makes this much cheaper. Someone starts it, goes to lunch, and checks the result when they come back.
+Daniel: Okay, I'm convinced. As long as it's the same recording every time, so the results can be compared.
+Samantha: Yes, same recording, same machine, and we write the times down each time. So the decision is: every release candidate gets a one hour recording test on an eight gigabyte Mac before it ships.
+Samantha: Now someone has to write this down properly, as a test plan. It needs the steps, the machine, which build to use, what to check, and where to write the results. Sam volunteered before the meeting. Sam, are you still with us?
+Samantha: I think we lost him. He told me this morning that he can do it by Friday. So Sam will write the test plan for the one hour recording check by Friday. I'll confirm with him after the meeting and let you know if anything changes.
+Daniel: Can the test plan also include what to do when the check fails? Last time, when something failed, people weren't sure whether to stop the release or just file a bug.
+Samantha: Good idea. My view is simple. If the recording has gaps, or the summary has something that wasn't said, we stop the release. If it's only slower than last time, we file a bug and decide case by case, unless it's much slower.
+Daniel: How much slower is much slower?
+Samantha: Let's say more than twenty percent slower than the last release, or more than twenty percent more memory. That's big enough that it's not just noise, and small enough that we notice problems early.
+Tingting: That matches the rule we use for the automated benchmark, so it's good that they're the same.
+Samantha: Let's move on to the rest of the testing plan. Besides the long recording, we have the usual checks: the app installs and opens on every supported version of macOS, the permissions work, recording works with and without computer audio, and the notes are written to the right folder. Most of these are already automated. The ones that aren't automated need a person with a real Mac and a real microphone, and they take about half a day.
+Daniel: The part that always takes longest is the permissions. Every time we reset a test machine, we have to click through the system dialogs again. I wonder if there's a faster way.
+Samantha: There might be, but let's not change that in this release. The manual steps are written down and they work. We can look at it after the release.
+Daniel: Before hiring, can I bring up the frequently asked questions page? It's related to the beta.
+Samantha: Sure, go ahead.
+Daniel: Every beta, the same questions come in again and again. Does it work without internet? Where are my notes? Why is the first run slow? Can I use it on an older Mac? Does it work in other languages? We answer them one by one, by hand, and the answers are slightly different each time depending on who answers.
+Daniel: I'd like us to have one page on the website with these answers, written once, carefully. Then support can link to it, and the answers will be the same no matter who is on duty that week. It would also help the person from the customer who wanted a document for their security team, because some of the answers are exactly what they asked about.
+Samantha: I like it. Who writes it, though? Priya is busy with the onboarding copy this week.
+Daniel: I can draft the questions, and then someone who knows the details checks the answers. The engineering answers especially need to be exact. For example, the question about the internet: the honest answer is that the app goes online only to download the models and to check for updates, and nothing else, and we should say that in exactly those words.
+Tingting: 这个很好。技术相关的答案我们这边可以帮忙检查。
+Samantha: Then let's do it after the beta invitations go out, since those come first. It's not urgent enough to put a date on it today. Daniel, just keep it on your list.
+Daniel: Will do. Okay, that's all from me. Back to hiring.
+Samantha: Okay, hiring. We have budget for one more person, and we've been going back and forth about what kind of person. The two options are another engineer, or someone who focuses on testing and quality.
+Daniel: I've changed my mind on this a few times. A month ago, I would have said engineer, without question. We have a long list of features. But looking at this release, most of the problems weren't missing features. They were bugs that nobody caught, and slow feedback from testing.
+Samantha: That's my view too. The engineers are writing tests, which is great, but nobody owns testing as a whole. Nobody looks at the full picture across releases, and nobody is responsible for making sure the long recording test actually happens every time.
+Tingting: From the Chinese side, we'd also prefer a testing role. Our engineers spend a lot of time on manual testing before each release. If someone else owned that, they could spend more time on the actual work.
+Samantha: Then let's write the job description for a quality engineer. The role should include owning the release checks, maintaining the test recordings, running the benchmark, and working with the engineers to automate what can be automated.
+Daniel: I'd add one thing: this person should also read user feedback. The feedback tells us where the bugs are that our tests missed. Chen Jing's work on sorting feedback is a good start, and a quality engineer could take it over later.
+Samantha: Agreed. Let's not make this a decision today, though. I want to talk to the budget owner first, because a testing role in London costs more than in Shanghai, and we need to decide where the person sits. I'll come back with a proposal next month.
+Daniel: Fair enough. I'll write down the tasks we'd want this person to do, so the proposal has something concrete. It's not urgent, so I won't give a date.
+Samantha: Next, beta testers. For the November beta, we want more people outside the company. Last time we had about thirty external testers, and most of them were friends of the team. They were kind, maybe too kind. We want people who will actually complain.
+Daniel: Where would we find them?
+Samantha: A few places. We have a waiting list on the website with a few hundred names. Some of them wrote a sentence about how they would use the app, and some of those sound like exactly the people we want: people who have a lot of meetings, some in Chinese and some in English, and who care about privacy.
+Tingting: We should make sure they understand the beta rules. They should never send us their real meeting recordings, even if something goes wrong. We should say this clearly in the invitation.
+Samantha: Absolutely. The invitation will say that, and the feedback form will say it again. If they want to report a problem with a recording, we ask them to describe it, or to reproduce it with a test recording, like reading a news article aloud.
+Daniel: How many people do we invite?
+Samantha: Let's aim for a hundred. If half of them actually use it, that's fifty real testers, which is more than we've ever had. The beta date is now November tenth, right? The Chinese part moved it by a week.
+Tingting: Yes, November tenth.
+Samantha: Then we send the invitations a few days before. I'll handle the invitations myself; it's a small job.
+Samantha: The last thing in my list is support. After the beta starts, people will write to us. Last time, the messages came in to three different places: email, the website form, and direct messages to people on the team. Some messages were answered twice, and some weren't answered at all.
+Daniel: I remember. One person wrote to me directly, and I thought someone else had answered, and nobody did. That person was quite unhappy.
+Samantha: So for this beta, all support goes to one inbox. The website form sends to that inbox, and if anyone on the team gets a direct message, they forward it and tell the person to use the form next time. We'll take turns reading the inbox, one person per week.
+Tingting: 我们这边也会有人轮流看。Our team can take every other week, so the time zones are covered.
+Samantha: Perfect. That's all from me. Daniel, anything else?
+Daniel: Just one small thing. The build numbers. Right now the build number is the date, which is fine until we make two builds on the same day. Can we add a counter? It's a tiny change.
+Tingting: 可以，这个很小，王磊顺手改一下就行，不用列成待办。
+Samantha: Great. Then let's move to the last part, the wrap up.
+Tingting: 在说 release checklist 之前，我想先花几分钟聊一下明年第一季度的方向。今天不做决定，只是让大家先想一想，下个月的会上再定。
+Tingting: 我现在想到的有三个方向。第一个是会议询问，就是在日历上的会议开始的时候，应用自动问用户要不要录音。很多用户说，他们经常开会开到一半才想起来要录音，前面的内容就没了。如果应用能在会议开始的时候提醒一下，这个问题就解决了。
+Tingting: 第二个方向是搜索。现在用户的笔记越来越多，有的人已经有一百多条了。想找几个月前某次会议上说过的一句话，只能一条一条翻。如果能在所有笔记里搜索，会方便很多。搜索也完全可以在本地做，不需要联网。
+Tingting: 第三个方向是更多的语言。现在我们只认真测试了普通话和英文。有用户问能不能支持粤语和日语。模型本身是支持的，但是我们没有测试过，不敢说效果怎么样。如果要支持，就要准备这两种语言的测试录音，而且要找会说这两种语言的同事帮忙检查。
+Tingting: 这三个方向工作量都不小，第一季度大概只能做一个，最多做一个半。我个人比较倾向于会议询问，因为它解决的是一个很具体的问题，而且用户每次开会都会用到。搜索也很重要，但是笔记多起来还需要时间，可以晚一点做。多语言要看有没有人手。
+Tingting: 刘洋说他更想做搜索，因为他自己的笔记已经很多了，找东西很痛苦。陈静说会议询问涉及日历的权限，用户可能会担心隐私，需要仔细设计权限的说明。这些意见都很好，我记下来了。
+Tingting: 我建议大家这个月每个人都想一想，如果只能做一个，你会选哪个，理由是什么。下个月的计划会上，每个人用一两句话说一下，然后我们再决定。今天就先不定了。
+Daniel: Can I add something about performance before we move on? It's related to the benchmark discussion, and I think it matters for the first quarter too.
+Tingting: 当然可以，请说。
+Daniel: I spent some time last week looking at where the time goes when we process a one hour recording. Roughly speaking, transcription is about two thirds of the total, and the summary is about one third. Loading the models is small in comparison, a few seconds each, unless the Mac has just started and nothing is in memory yet.
+Daniel: Within transcription, most of the time is the speech model reading each thirty second window. The overlap between windows costs us about ten percent extra, because every three seconds of audio at a join is processed twice. We could make the overlap shorter, but then the risk of cutting a word in half goes up. I don't think it's worth changing right now.
+Daniel: Within the summary, the time depends a lot on memory. On a Mac with plenty of memory, a one hour transcript fits into one piece, and the model writes the summary in one go. On an eight gigabyte Mac, the transcript is split into several pieces, each piece gets its own summary, and then the pieces are merged. That merging step is where we've seen the model sometimes drop an action item, or combine two decisions into one.
+Samantha: Is that something the benchmark will catch?
+Daniel: Partly. The benchmark checks that everything in the summary was actually said. It doesn't fully check that nothing important was left out, because that's harder to measure. We compare the summary with the list of decisions and action items we wrote down for the test recording, and we print how many were found, but we don't fail the run on it. At least not yet.
+Tingting: 我觉得先这样就可以。编造内容比遗漏内容更严重，先把编造的问题管住。遗漏的问题，我们先看数字，有了几次的数据以后，再决定要不要设一个标准。
+Daniel: Agreed. One more observation. The first time you run the app after restarting the Mac, loading the models is much slower, sometimes ten or fifteen seconds instead of one. That's the system reading the model files from disk. It only happens once, so users probably won't notice, but it makes the benchmark numbers jump around if we're not careful. We should always do one warm up run before we measure.
+Samantha: Or at least write down whether it was a cold start or not.
+Daniel: Yes, either way. That's all from me on performance. I'll put the details in a short document in the repository, following what Tingting said about keeping documents there.
+Tingting: 好，谢谢 Daniel。这些信息对第一季度的计划很有用。那我们回到 release checklist。
+Tingting: 好，最后一部分，我们先说一下 release checklist，再回顾今天所有的决定和待办。这部分还是中英文混着说。
+Tingting: release checklist 现在是一个很长的文档，有三十多项。问题是，很多项已经过时了，比如还在检查一个我们早就删掉的设置页面。另外，有些项写得太模糊，比如检查录音是否正常，没有说怎么算正常。每次发版的时候，大家都是凭感觉勾掉。
+Daniel: I've noticed that too. Half the items are ticked in the first five minutes, which means nobody actually checked them.
+Tingting: 所以我想把 checklist 重新整理一遍。原则是：能自动检查的，就改成自动的，从 checklist 里拿掉；不能自动检查的，每一项都要写清楚步骤和通过的标准。比如检查录音，要写成：录一分钟，停止，在列表里能看到这条录音，时长显示一分钟，播放的时候能听到声音。
+Samantha: That's much better. Who's going to rewrite it?
+Tingting: 我觉得这件事和 Sam 写的 test plan 关系很大，最好是同一个人来做，或者至少一起做。等 Sam 的 test plan 写完了，我们再看 checklist 怎么改。所以这个先不列成单独的待办，等下周再说。
+Daniel: Sounds good. Let's not do the same work twice.
+Tingting: 下一个是 code review 的规则。最近有几个 PR 合得太快了，review 的人只看了一眼就 approve。其中一个 PR 改了录音文件的格式，但是没有更新文档，也没有加 test，结果内部测试的同事升级以后，旧的录音打不开了。
+Samantha: That's the one that broke the old recordings last month? I remember the messages.
+Tingting: 对，就是那个。修起来花了两天。所以我想重申一下 review 的规则：第一，每个 PR 都要有 test；第二，改到文件格式、隐私相关的地方，要两个人 review；第三，review 的人要真的把代码跑一遍，不能只看 diff。
+Daniel: The third one is hard to enforce. How would we know if someone actually ran it?
+Tingting: 没办法完全保证，靠大家自觉。但是我们可以在 PR 模板里加一行，让 reviewer 写一下自己是怎么验证的。写了以后，至少大家会想一想。
+Samantha: I like that. It's a small change and it makes people think.
+Tingting: 这几条规则之前就有，只是大家没有严格执行，所以不算新的决定。我会在群里再发一遍。
+Tingting: 然后是会议时间。现在的 planning meeting 是周五下午，对中国的同事来说是周五晚上，大家都很累，而且周五开完会，决定的事情要到下周一才能开始做，中间隔了一个周末。我问了一下大家，周三下午对两边的时区都比较合适，伦敦那边是早上。
+Daniel: Wednesday morning works for me. I usually have no meetings then.
+Samantha: Same for me. Wednesday is better than Friday.
+Tingting: 好，那就定下来：下次 planning meeting 改到周三下午，伦敦时间是周三早上。会议邀请我来改。
+Tingting: 还有最后一个小问题，是文档。现在我们的文档分散在好几个地方：有的在代码仓库里，有的在共享文件夹里，有的在群聊记录里。新来的同事经常找不到东西。我不打算现在就整理，因为工作量很大。但是我希望从今天开始，新写的文档都放在代码仓库里，旧的文档慢慢搬过去。
+Samantha: Should design documents also go into the repository? Our design files are in the design tool, which is easier for us.
+Tingting: 设计文件可以留在设计工具里，但是在代码仓库里放一个链接和一段说明，讲清楚设计文件在哪里、最新的是哪一版。这样工程师也能找到。
+Samantha: That works for us.
+Tingting: 好，那我们开始回顾。I'll do the recap in both languages, 先说中文，再用英文说一遍，这样大家都能确认。
+Tingting: 今天一共有七个决定。第一，十一月的版本先不做云同步，只做本地导出。第二，测试版推迟一周，改到十一月十号发布。第三，新手引导从五个页面改成三个页面。第四，这个版本不做深色模式的重新设计，一月份再看。第五，模型下载失败的时候，先自动重试两次，再提示用户，checksum 错误除外。第六，首页加一个打开文件夹的按钮。第七，每个 release candidate 发布之前，都要在八个 G 内存的电脑上做一次一小时的录音测试。另外，planning meeting 改到周三下午。
+Tingting: 待办一共八个。陈静这周五之前把导出功能的设计稿发给大家。刘洋下周二之前修好长录音在后台被系统暂停的问题。Priya 周四之前写好新手引导的文字。Tom 下周一之前准备好无障碍评审用的测试设备。Maria 周三之前 review 王磊的 retry PR。王磊这周写好 memory 的 benchmark，周四的 standup 上给大家看结果。陈静整理前五十条用户反馈，下周一发到群里。Sam 周五之前写好一小时录音测试的 test plan。
+Samantha: Let me repeat the English version so our side has it clearly. Decisions: no cloud sync in the November release, only local export. The beta moves one week, to November tenth. Onboarding goes from five screens to three. No dark mode redesign until January. Model downloads retry twice automatically before showing an error, except for checksum errors. The home screen gets an Open Folder button. Every release candidate gets a one hour recording test on an eight gigabyte Mac. And the planning meeting moves to Wednesday.
+Samantha: Action items: Chen Jing sends the export design by Friday. Liu Yang fixes the background pause by next Tuesday. Priya writes the onboarding copy by Thursday. Tom sets up the accessibility test devices by next Monday. Maria reviews the retry pull request by Wednesday. Wang Lei builds the memory benchmark and shows the results at Thursday's standup. Chen Jing sorts the first fifty feedback items and shares them next Monday. And Sam writes the one hour test plan by Friday.
+Daniel: That matches my notes. Thanks everyone, this was a long one.
+Tingting: 谢谢大家。会议纪要我会发到群里。如果有哪一条和你理解的不一样，今天之内在群里说。好，散会。

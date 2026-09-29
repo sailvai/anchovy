@@ -38,6 +38,19 @@
         "footprint_after_unload": 84787920
       }
     },
+    "mixed-hour": {
+      "error_rate": 0.0459348900630646,
+      "seconds": {
+        "audio": 3375.6164375,
+        "transcribe": 467.328515,
+        "summarize": 81.122964666
+      },
+      "memory": {
+        "peak_footprint": 4503066216,
+        "footprint_before": 218890840,
+        "footprint_after_unload": 297911160
+      }
+    },
     "zh-product": {
       "error_rate": 0.006896551724137931,
       "seconds": {

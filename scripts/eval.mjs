@@ -9,21 +9,31 @@
 //
 // Pass: Chinese character error and English word error within 2 points of
 // evals/baseline.json, every summary valid JSON, every decision and action
-// item supported by the transcript, and every summary in the language spoken.
-// The first passing run writes the baseline.
+// item supported by the transcript, every summary in the language spoken, no
+// words lost or repeated where transcription windows join, and the small-chunk
+// run really chunked and merged. For the hour-long sample, transcription time,
+// summary time, and peak memory within 20% of the baseline. The first passing
+// run writes the baseline; a sample new to it is added on its first pass.
 //
-//   npm run eval                 run every sample
-//   npm run eval -- --fetch      download the default models first
+//   npm run eval                      run every sample
+//   npm run eval -- --sample <id>     run one sample (repeatable)
+//   npm run eval -- --fetch           download the default models first
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { makeClip, parseScript } from "./eval-audio.mjs";
 import {
+  checkJoins,
+  compareCost,
   compareWithBaseline,
   covered,
   errorRate,
+  JOIN_LIMIT,
   languageOf,
+  megabytes as mb,
   percent,
+  summaryCalls,
   support,
   SUPPORT_THRESHOLD,
 } from "./eval-score.mjs";
@@ -34,7 +44,8 @@ const samplesDir = path.join(root, "evals", "samples");
 const baselinePath = path.join(root, "evals", "baseline.json");
 const clipsDir = path.join(root, "node_modules", ".tmp", "eval-clips");
 const runner = path.join(tauriDir, "target", "release", "examples", "eval");
-// Small enough that every sample is summarized in two or more chunks.
+// Small enough that every short sample is summarized in two or more chunks.
+// A long sample sets its own size in sample.json.
 const SMALL_CHUNK_TOKENS = 120;
 
 function run(command, args, options = {}) {
@@ -55,35 +66,29 @@ function machine() {
   };
 }
 
-function loadSamples() {
-  return readdirSync(samplesDir)
+// A sample is transcript.txt read by one voice, or script.txt read turn by
+// turn by the voice named on each line.
+function loadSample(id) {
+  const dir = path.join(samplesDir, id);
+  const sample = { id, ...JSON.parse(readFileSync(path.join(dir, "sample.json"), "utf8")) };
+  if (existsSync(path.join(dir, "script.txt"))) {
+    sample.turns = parseScript(readFileSync(path.join(dir, "script.txt"), "utf8"));
+    sample.transcript = sample.turns.map((turn) => turn.text).join("\n");
+  } else {
+    sample.transcript = readFileSync(path.join(dir, "transcript.txt"), "utf8").trim();
+  }
+  return sample;
+}
+
+function loadSamples(only) {
+  const ids = readdirSync(samplesDir)
     .filter((id) => existsSync(path.join(samplesDir, id, "sample.json")))
-    .sort()
-    .map((id) => ({
-      id,
-      ...JSON.parse(readFileSync(path.join(samplesDir, id, "sample.json"), "utf8")),
-      transcript: readFileSync(path.join(samplesDir, id, "transcript.txt"), "utf8").trim(),
-    }));
+    .sort();
+  for (const id of only) if (!ids.includes(id)) throw new Error(`No sample ${id}.`);
+  return ids.filter((id) => only.length === 0 || only.includes(id)).map(loadSample);
 }
 
-// The clips are made on this Mac and never committed.
-function makeClip(sample) {
-  mkdirSync(clipsDir, { recursive: true });
-  const aiff = path.join(clipsDir, `${sample.id}.aiff`);
-  const wav = path.join(clipsDir, `${sample.id}.wav`);
-  run("say", [
-    "-v",
-    sample.voice,
-    "-o",
-    aiff,
-    "-f",
-    path.join(samplesDir, sample.id, "transcript.txt"),
-  ]);
-  run("afconvert", ["-f", "WAVE", "-d", "LEI16@48000", "-c", "1", aiff, wav]);
-  return wav;
-}
-
-function score(sample, output, { scoreTranscript }) {
+function score(sample, output, { scoreTranscript, mustChunk }) {
   const result = { id: sample.id, language: sample.language, ok: output.ok, problems: [] };
   if (!output.ok) {
     result.problems.push(`No note: ${output.error}`);
@@ -91,12 +96,33 @@ function score(sample, output, { scoreTranscript }) {
   }
   const report = output.report;
   const heard = report.segments.map((segment) => segment.text).join(" ");
-  if (scoreTranscript) result.transcription = errorRate(sample.transcript, heard, sample.language);
+  if (scoreTranscript) {
+    result.transcription = errorRate(sample.transcript, heard, sample.language);
+    result.joins = checkJoins(
+      sample.transcript,
+      report.segments,
+      output.heard.map(([, text]) => text),
+      sample.language,
+    );
+    for (const join of result.joins) {
+      if (join.lost >= JOIN_LIMIT || join.repeated >= JOIN_LIMIT) {
+        result.problems.push(
+          `At the window join at ${clock(join.start_seconds)}, ${join.lost} unit(s) lost and ${join.repeated} repeated.`,
+        );
+      }
+    }
+  }
 
   // The pipeline only writes a note after a valid answer; count how many
   // answers were needed.
   result.answers = output.answers.length;
   result.retries = output.answers.filter((answer) => answer.attempt > 0).length;
+  result.calls = summaryCalls(output.answers);
+  if (mustChunk && !(result.calls.chunks > 1 && result.calls.merges > 0)) {
+    result.problems.push(
+      `Summary was not chunked and merged: ${result.calls.chunks} chunk(s), ${result.calls.merges} merge(s) at ${output.chunk_tokens} tokens per chunk.`,
+    );
+  }
 
   const items = [
     ...report.summary.decisions.map((text) => ({ kind: "decision", text })),
@@ -115,7 +141,9 @@ function score(sample, output, { scoreTranscript }) {
   }
   const written = [report.summary.summary, ...items.map((item) => item.text)].join(" ");
   result.summaryLanguage = languageOf(written);
-  if (result.summaryLanguage !== sample.language) {
+  // A meeting in both languages may be summarized in either (plan step 6b).
+  const spoken = sample.language === "mixed" ? ["zh", "en"] : [sample.language];
+  if (!spoken.includes(result.summaryLanguage)) {
     result.problems.push(
       `Summary is in ${result.summaryLanguage}, speech is in ${sample.language}.`,
     );
@@ -147,7 +175,20 @@ function rate(results, language) {
   return total ? wrong / total : null;
 }
 
-const mb = (bytes) => (bytes == null ? "-" : `${(bytes / 1e6).toFixed(0)} MB`);
+function clock(seconds) {
+  const whole = Math.floor(seconds);
+  return [whole / 3600, (whole / 60) % 60, whole % 60]
+    .map((n) => String(Math.floor(n)).padStart(2, "0"))
+    .join(":");
+}
+
+function sampleBaseline(r) {
+  return {
+    error_rate: r.transcription.edits / r.transcription.length,
+    seconds: r.seconds,
+    memory: r.memory,
+  };
+}
 
 function main() {
   const args = process.argv.slice(2);
@@ -157,16 +198,26 @@ function main() {
     run(runner, ["--fetch"], { stdio: "inherit" });
   }
 
-  const samples = loadSamples();
+  const only = args.flatMap((arg, i) => (args[i - 1] === "--sample" ? [arg] : []));
+  const samples = loadSamples(only);
   const results = [];
   for (const sample of samples) {
-    const clip = makeClip(sample);
+    console.log(`=== ${sample.id}: making the audio`);
+    const clip = makeClip(sample, path.join(samplesDir, sample.id), clipsDir);
     for (const variant of ["app", "chunked"]) {
-      const extra = variant === "chunked" ? ["--chunk-tokens", String(SMALL_CHUNK_TOKENS)] : [];
+      const chunkTokens = sample.summary_chunk_tokens ?? SMALL_CHUNK_TOKENS;
+      const extra = variant === "chunked" ? ["--chunk-tokens", String(chunkTokens)] : [];
       console.log(`=== ${sample.id} (${variant})`);
-      const output = JSON.parse(run(runner, [clip, ...extra]));
-      const result = score(sample, output, { scoreTranscript: variant === "app" });
+      const stdout = run(runner, [clip, ...extra]);
+      // Kept next to the clip for a closer look; never committed.
+      writeFileSync(path.join(clipsDir, `${sample.id}-${variant}.json`), stdout);
+      const output = JSON.parse(stdout);
+      const result = score(sample, output, {
+        scoreTranscript: variant === "app",
+        mustChunk: variant === "chunked",
+      });
       result.variant = variant;
+      result.timed = sample.timed === true && variant === "app";
       result.note = output.note;
       results.push(result);
     }
@@ -176,13 +227,17 @@ function main() {
   console.log("\n=== Samples");
   for (const r of results) {
     const t = r.transcription;
-    const errorLabel = r.language === "zh" ? "CER" : "WER";
+    const errorLabel = { zh: "CER", en: "WER", mixed: "error (characters and words)" }[r.language];
+    const joinTrouble = r.joins?.filter((j) => j.lost || j.repeated) ?? [];
     console.log(
       [
         `${r.id} (${r.variant})`,
         t ? `${errorLabel} ${percent(t.edits / t.length)} (${t.edits}/${t.length})` : null,
+        r.joins
+          ? `${r.joins.length} joins, ${joinTrouble.length} with a unit lost or repeated (most ${Math.max(0, ...r.joins.map((j) => Math.max(j.lost, j.repeated)))})`
+          : null,
         r.ok
-          ? `JSON valid, ${r.answers} answer(s), ${r.retries} retr${r.retries === 1 ? "y" : "ies"}`
+          ? `JSON valid, ${r.answers} answer(s), ${r.retries} retr${r.retries === 1 ? "y" : "ies"}, ${r.calls.chunks} chunk(s), ${r.calls.merges} merge(s)`
           : "no note",
         r.items
           ? `${r.items.length} items, lowest support ${percent(Math.min(1, ...r.items.map((i) => i.support)))}`
@@ -206,17 +261,34 @@ function main() {
 
   const failures = results.flatMap((r) => r.problems.map((p) => `${r.id} (${r.variant}): ${p}`));
   console.log("\n=== Totals");
-  console.log(`Chinese character error rate: ${percent(current.chinese_cer)}`);
-  console.log(`English word error rate:      ${percent(current.english_wer)}`);
+  console.log(
+    `Chinese character error rate: ${current.chinese_cer == null ? "no sample run" : percent(current.chinese_cer)}`,
+  );
+  console.log(
+    `English word error rate:      ${current.english_wer == null ? "no sample run" : percent(current.english_wer)}`,
+  );
 
   const env = machine();
+  const passed = results.filter((r) => r.variant === "app" && r.ok);
   if (existsSync(baselinePath)) {
     const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
     console.log(
       `Baseline (${baseline.created}, ${baseline.machine.chip}): CER ${percent(baseline.chinese_cer)}, WER ${percent(baseline.english_wer)}`,
     );
     failures.push(...compareWithBaseline(current, baseline));
-  } else if (failures.length === 0) {
+    for (const r of results.filter((r) => r.timed && r.ok && baseline.samples[r.id])) {
+      failures.push(...compareCost(r.id, r, baseline.samples[r.id]));
+    }
+    const added = passed.filter((r) => !baseline.samples[r.id]);
+    if (failures.length === 0 && added.length) {
+      for (const r of added) baseline.samples[r.id] = sampleBaseline(r);
+      baseline.samples = Object.fromEntries(Object.entries(baseline.samples).sort());
+      writeFileSync(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`);
+      console.log(
+        `Added ${added.map((r) => r.id).join(", ")} to ${path.relative(root, baselinePath)}.`,
+      );
+    }
+  } else if (failures.length === 0 && only.length === 0) {
     const baseline = {
       created: new Date().toISOString().slice(0, 10),
       machine: env,
@@ -226,18 +298,7 @@ function main() {
       },
       chinese_cer: current.chinese_cer,
       english_wer: current.english_wer,
-      samples: Object.fromEntries(
-        results
-          .filter((r) => r.variant === "app")
-          .map((r) => [
-            r.id,
-            {
-              error_rate: r.transcription.edits / r.transcription.length,
-              seconds: r.seconds,
-              memory: r.memory,
-            },
-          ]),
-      ),
+      samples: Object.fromEntries(passed.map((r) => [r.id, sampleBaseline(r)])),
     };
     writeFileSync(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`);
     console.log(`First passing run: wrote ${path.relative(root, baselinePath)}.`);

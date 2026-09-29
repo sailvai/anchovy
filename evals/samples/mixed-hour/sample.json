@@ -1,0 +1,25 @@
+{
+  "language": "mixed",
+  "timed": true,
+  "summary_chunk_tokens": 8000,
+  "decisions": [
+    "十一月的版本先不做云同步，只做本地导出。",
+    "测试版推迟一周，改到十一月十号发布。",
+    "The onboarding flow will have three screens instead of five.",
+    "Drop the dark mode redesign from this release and revisit it in January.",
+    "模型下载失败的时候，先自动重试两次，再提示用户；checksum 错误除外。",
+    "首页加一个打开文件夹的按钮，拿掉本月录音总时长。",
+    "Every release candidate gets a one hour recording test on an eight gigabyte Mac before it ships.",
+    "下次 planning meeting 改到周三下午。"
+  ],
+  "action_items": [
+    "陈静这周五之前把导出功能的设计稿发给大家。",
+    "刘洋下周二之前修好长录音在后台被系统暂停的问题。",
+    "Priya will write the new onboarding copy and share it by Thursday.",
+    "Tom will set up the test devices for the accessibility review next Monday.",
+    "Maria will review the retry logic PR before Wednesday.",
+    "王磊 this week 写一个 memory 的 benchmark，周四的 standup 上给大家看结果。",
+    "陈静整理前五十条用户反馈，下周一发到群里。",
+    "Sam will write the test plan for the one hour recording check by Friday."
+  ]
+}
