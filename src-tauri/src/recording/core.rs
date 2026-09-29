@@ -699,6 +699,11 @@ impl Recorder {
         self.session.lock().unwrap().is_some()
     }
 
+    /// Runs the computer audio check. `run` gets a `keep_going` test to poll.
+    pub fn probe<T>(&self, run: impl FnOnce(&dyn Fn() -> bool) -> T) -> Option<T> {
+        Some(run(&|| true))
+    }
+
     /// Whether the last recording got computer audio. `None` before the
     /// first recording of this run.
     pub fn last_computer_audio(&self) -> Option<ComputerAudio> {
@@ -1139,6 +1144,81 @@ mod tests {
         );
         assert!(matches!(result, Err(RecordingError::Disk(_))));
         assert!(stopped.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn record_stops_a_running_computer_audio_check_and_waits_for_it() {
+        let dir = TestDir::new();
+        let recorder = Arc::new(Recorder::new());
+        let probing = Arc::new(AtomicBool::new(false));
+        let (started_tx, started_rx) = mpsc::channel();
+        let probe = {
+            let (recorder, probing) = (recorder.clone(), probing.clone());
+            thread::spawn(move || {
+                recorder.probe(|keep_going| {
+                    probing.store(true, Ordering::SeqCst);
+                    started_tx.send(()).unwrap();
+                    let began = Instant::now();
+                    while keep_going() && began.elapsed() < Duration::from_secs(5) {
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    probing.store(false, Ordering::SeqCst);
+                    began.elapsed()
+                })
+            })
+        };
+        started_rx.recv().unwrap();
+
+        let began = Instant::now();
+        recorder
+            .start(
+                dir.path(),
+                START,
+                || {
+                    // The check's tap and device are gone before the
+                    // recording's are made.
+                    assert!(!probing.load(Ordering::SeqCst));
+                    Ok(fake_capture(true, Arc::new(AtomicBool::new(false))))
+                },
+                TICK,
+                |_| {},
+            )
+            .unwrap();
+
+        assert!(
+            began.elapsed() < Duration::from_secs(1),
+            "{:?}",
+            began.elapsed()
+        );
+        // Cut short, so its answer is not used.
+        assert_eq!(probe.join().unwrap(), None);
+        recorder.stop().unwrap();
+    }
+
+    #[test]
+    fn no_computer_audio_check_runs_while_recording() {
+        let dir = TestDir::new();
+        let recorder = Recorder::new();
+        recorder
+            .start(
+                dir.path(),
+                START,
+                || Ok(fake_capture(true, Arc::new(AtomicBool::new(false)))),
+                TICK,
+                |_| {},
+            )
+            .unwrap();
+
+        let checked = recorder.probe(|_| -> bool { panic!("must not probe while recording") });
+
+        assert_eq!(checked, None);
+        recorder.stop().unwrap();
+    }
+
+    #[test]
+    fn a_check_that_runs_to_the_end_gives_its_answer() {
+        let recorder = Recorder::new();
+        assert_eq!(recorder.probe(|keep_going| keep_going()), Some(true));
     }
 
     #[test]
