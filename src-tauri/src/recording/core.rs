@@ -394,6 +394,14 @@ impl<W: Write + Seek> Pump<W> {
         self.writer.update_header()
     }
 
+    pub fn levels(&self) -> Levels {
+        self.levels
+    }
+
+    pub fn dropped(&self) -> u64 {
+        self.drain.dropped.load(Ordering::Relaxed)
+    }
+
     pub fn finish(self) -> io::Result<(W, Progress, Levels, u64)> {
         let progress = self.progress();
         let dropped = self.drain.dropped.load(Ordering::Relaxed);
@@ -472,12 +480,14 @@ struct Finished {
     error: Option<io::Error>,
 }
 
+/// Always returns what was recorded: a failure to write or to close the file
+/// is carried in `Finished::error`, so the recording can still be Saved.
 fn run_writer(
     mut pump: Pump<BufWriter<File>>,
     stop: Arc<AtomicBool>,
     tick: Duration,
     on_progress: impl Fn(Progress),
-) -> io::Result<Finished> {
+) -> Finished {
     let mut error = None;
     let mut next_tick = Instant::now() + tick;
     loop {
@@ -503,15 +513,47 @@ fn run_writer(
         }
         thread::sleep(DRAIN_INTERVAL.min(tick));
     }
-    let (file, progress, levels, dropped) = pump.finish()?;
-    file.into_inner()
-        .map_err(|err| err.into_error())?
-        .sync_all()?;
-    Ok(Finished {
+    let (progress, levels, dropped) = (pump.progress(), pump.levels(), pump.dropped());
+    let closed = pump.finish().and_then(|(file, ..)| {
+        file.into_inner()
+            .map_err(|err| err.into_error())?
+            .sync_all()
+    });
+    Finished {
         progress,
         levels,
         dropped,
-        error,
+        error: error.or(closed.err()),
+    }
+}
+
+/// Moves a stopped recording to Saved with the inputs that reached the file,
+/// then reports the first error, if any. The audio is kept either way: its
+/// header was last updated at most a second before the failure.
+fn save(
+    folder: &Path,
+    audio: &Path,
+    mut state: State,
+    finished: Finished,
+    stopped: Result<(), RecordingError>,
+) -> Result<Saved, RecordingError> {
+    state.inputs = recorded_inputs(&finished.levels);
+    state
+        .move_to(Status::Saved)
+        .map_err(|err| RecordingError::Disk(err.to_string()))?;
+    write_state(folder, &state).map_err(|err| RecordingError::Disk(err.to_string()))?;
+    if let Some(err) = finished.error {
+        return Err(err.into());
+    }
+    stopped?;
+    Ok(Saved {
+        folder: folder.to_path_buf(),
+        audio: audio.to_path_buf(),
+        seconds: finished.progress.seconds,
+        bytes: finished.progress.bytes,
+        inputs: state.inputs,
+        levels: finished.levels,
+        dropped_frames: finished.dropped,
     })
 }
 
@@ -522,7 +564,7 @@ pub struct Session {
     state: State,
     capture: Box<dyn Capture>,
     stop: Arc<AtomicBool>,
-    writer: JoinHandle<io::Result<Finished>>,
+    writer: JoinHandle<Finished>,
 }
 
 impl Session {
@@ -591,34 +633,25 @@ impl Session {
         let Session {
             folder,
             audio,
-            mut state,
+            state,
             capture,
             stop,
             writer,
         } = self;
         let stopped = capture.stop();
         stop.store(true, Ordering::Release);
-        let finished = writer
-            .join()
-            .map_err(|_| RecordingError::Disk("the writer stopped unexpectedly".into()))??;
-        state.inputs = recorded_inputs(&finished.levels);
-        state
-            .move_to(Status::Saved)
-            .map_err(|err| RecordingError::Disk(err.to_string()))?;
-        write_state(&folder, &state).map_err(|err| RecordingError::Disk(err.to_string()))?;
-        if let Some(err) = finished.error {
-            return Err(err.into());
-        }
-        stopped?;
-        Ok(Saved {
-            folder,
-            audio,
-            seconds: finished.progress.seconds,
-            bytes: finished.progress.bytes,
-            inputs: state.inputs,
-            levels: finished.levels,
-            dropped_frames: finished.dropped,
-        })
+        // If the writer thread died, what reached the file is unknown, so
+        // Levels::default() makes `inputs` claim the microphone only.
+        let finished = writer.join().unwrap_or_else(|_| Finished {
+            progress: Progress {
+                seconds: 0.0,
+                bytes: 0,
+            },
+            levels: Levels::default(),
+            dropped: 0,
+            error: Some(io::Error::other("the writer stopped unexpectedly")),
+        });
+        save(&folder, &audio, state, finished, stopped)
     }
 }
 
@@ -1010,6 +1043,40 @@ mod tests {
             vec![Input::Microphone]
         );
         assert_eq!(recorded_inputs(&levels(None)), vec![Input::Microphone]);
+    }
+
+    #[test]
+    fn a_file_that_fails_to_close_is_still_saved_and_the_error_returned() {
+        let dir = TestDir::new();
+        let folder = create_recording_folder(dir.path(), &START).unwrap();
+        let mut state = State::new();
+        state.inputs = ComputerAudio::Recording.inputs();
+        write_state(&folder, &state).unwrap();
+        let finished = Finished {
+            progress: Progress {
+                seconds: 3.0,
+                bytes: 288_044,
+            },
+            levels: Levels {
+                microphone: Level::default(),
+                computer: Some(Level {
+                    peak: 0.5,
+                    ..Level::default()
+                }),
+            },
+            dropped: 0,
+            error: Some(io::Error::other("disk full")),
+        };
+
+        let result = save(&folder, &folder.join("audio.wav"), state, finished, Ok(()));
+
+        assert_eq!(
+            result.unwrap_err(),
+            RecordingError::Disk("disk full".into())
+        );
+        let saved = read_state(&folder).unwrap();
+        assert_eq!(saved.status, Status::Saved);
+        assert_eq!(saved.inputs, vec![Input::Microphone, Input::ComputerAudio]);
     }
 
     #[test]

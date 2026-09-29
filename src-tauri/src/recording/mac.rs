@@ -169,12 +169,17 @@ fn devices() -> Result<Vec<Device>> {
         if streams.iter().sum::<usize>() == 0 {
             continue;
         }
+        // A device that cannot report its UID or name (one being unplugged,
+        // say) is skipped rather than failing the whole list.
+        let (Ok(uid), Ok(name)) = (
+            get_string(id, kAudioDevicePropertyDeviceUID),
+            get_string(id, kAudioObjectPropertyName),
+        ) else {
+            continue;
+        };
         out.push(Device {
             id,
-            info: InputDevice {
-                uid: get_string(id, kAudioDevicePropertyDeviceUID)?,
-                name: get_string(id, kAudioObjectPropertyName)?,
-            },
+            info: InputDevice { uid, name },
             streams,
         });
     }
