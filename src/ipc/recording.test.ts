@@ -12,7 +12,7 @@ import {
 
 afterEach(() => clearMocks());
 
-test("commands use the Rust names and pass the chosen device", async () => {
+test("commands use the Rust names; Rust reads the saved device itself", async () => {
   const calls: { cmd: string; args: unknown }[] = [];
   mockIPC((cmd, args) => {
     calls.push({ cmd, args });
@@ -23,15 +23,15 @@ test("commands use the Rust names and pass the chosen device", async () => {
   });
 
   const devices = await listInputDevices();
-  await recordingSources("BuiltIn");
+  await recordingSources();
   await startRecording();
   await stopRecording();
 
   expect(devices[0].name).toBe("MacBook Air Microphone");
   expect(calls).toEqual([
     { cmd: "list_input_devices", args: {} },
-    { cmd: "recording_sources", args: { deviceUid: "BuiltIn" } },
-    { cmd: "start_recording", args: { deviceUid: null } },
+    { cmd: "recording_sources", args: {} },
+    { cmd: "start_recording", args: {} },
     { cmd: "stop_recording", args: {} },
   ]);
 });

@@ -2,17 +2,20 @@
 //! state, and note.md), the library (the recording list), the models module
 //! (the shipped list and downloads), the recording module, first launch
 //! (the notes folder bookmark and permissions), the engines that run the
-//! models, the pipeline from a recording to its note, and the meeting
-//! prompt.
+//! models, the pipeline from a recording to its note, the meeting prompt,
+//! and the settings.
 
 pub mod engines;
 pub mod folder_access;
 pub mod library;
+pub mod m4a;
 pub mod meetings;
 pub mod models;
 pub mod notes;
 pub mod pipeline;
+pub mod player;
 pub mod recording;
+pub mod settings;
 pub mod setup;
 
 use engines::llama::LlamaEngines;
@@ -24,9 +27,11 @@ use models::catalog::Catalog;
 use models::store::Store;
 use models::{commands as model_commands, mac as model_mac, Models};
 use pipeline::{commands as note_commands, Deps, Pipeline, MEMORY_WAIT};
+use player::commands as player_commands;
 use recording::commands as recording_commands;
 use recording::core::Recorder;
 use serde::Serialize;
+use settings::{commands as settings_commands, SettingsStore};
 use setup::{commands as setup_commands, Setup};
 use std::sync::Arc;
 use tauri::Manager;
@@ -64,7 +69,7 @@ pub fn run() {
         Ok(None) => {}
         Err(err) => eprintln!("Anchovy can't read the saved notes folder. {err}"),
     }
-    let note_settings = pipeline::read_settings(&support_dir);
+    let settings = Arc::new(SettingsStore::load(support_dir.clone()));
     let deps = Deps {
         models: models.clone(),
         engines: Arc::new(LlamaEngines),
@@ -74,26 +79,50 @@ pub fn run() {
     };
     tauri::Builder::default()
         .setup(move |app| {
+            // The player may read the notes folder, and nothing else.
+            if let Some(notes_dir) = app.state::<Library>().notes_dir() {
+                if let Err(err) =
+                    player::follow_notes_folder(&app.asset_protocol_scope(), None, &notes_dir)
+                {
+                    eprintln!("Anchovy can't open the notes folder to the player. {err}");
+                }
+            }
             let pipeline = Pipeline::new(deps, note_commands::emitter(app.handle().clone()));
             let folders = note_commands::recording_folders(&app.state::<Library>());
             // A note left Working by an app that quit will never finish.
             pipeline.recover(&folders);
             pipeline.resume_waiting(&folders);
-            app.manage(Arc::new(pipeline));
+            let pipeline = Arc::new(pipeline);
+            app.manage(pipeline.clone());
+            // A Small recording whose app was killed left its WAV in
+            // `.anchovy/`: encode it now, as Stop would have.
+            std::thread::spawn(move || {
+                for folder in &folders {
+                    match recording::small::recover(folder, &m4a::mac::MacEncoder) {
+                        Ok(Some(_)) => pipeline.changed(folder),
+                        Ok(None) => {}
+                        Err(err) => eprintln!(
+                            "Anchovy couldn't finish the recording in {}. {err}",
+                            folder.display()
+                        ),
+                    }
+                }
+            });
             meeting_commands::watch(app.handle().clone());
             Ok(())
         })
         .manage(models)
-        .manage(note_settings)
+        .manage(settings)
         .manage(library)
         .manage(folder_access)
         .manage(Arc::new(Setup::load(support_dir)))
-        .manage(Arc::new(Recorder::new()))
+        .manage(Arc::new(Recorder::new(Arc::new(m4a::mac::MacEncoder))))
         .manage(Arc::new(Meetings::new()))
         .invoke_handler(tauri::generate_handler![
             app_info,
             library_commands::list_recordings,
             library_commands::read_note,
+            player_commands::recording_audio,
             library_commands::show_in_finder,
             library_commands::move_to_trash,
             model_commands::list_models,
@@ -107,7 +136,6 @@ pub fn run() {
             recording_commands::stop_recording,
             note_commands::generate_note,
             note_commands::note_progress,
-            note_commands::note_settings,
             note_commands::resume_waiting_notes,
             folder_commands::choose_notes_folder,
             folder_commands::use_default_notes_folder,
@@ -118,6 +146,8 @@ pub fn run() {
             setup_commands::open_privacy_settings,
             meeting_commands::meeting_prompt,
             meeting_commands::answer_meeting_prompt,
+            settings_commands::get_settings,
+            settings_commands::update_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Anchovy");

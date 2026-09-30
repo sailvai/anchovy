@@ -11,7 +11,8 @@ use super::core::{ComputerAudio, Recorder, Recording, Saved, PROGRESS_INTERVAL};
 use super::mac;
 use crate::library::Library;
 use crate::notes::note::Source;
-use crate::pipeline::{NoteSettings, Pipeline};
+use crate::pipeline::Pipeline;
+use crate::settings::SettingsStore;
 use crate::setup::can_record;
 
 pub const PROGRESS_EVENT: &str = "recording-progress";
@@ -47,16 +48,18 @@ pub fn list_input_devices() -> Result<Vec<InputDeviceView>, String> {
         .collect())
 }
 
+/// The sources Record will use: the saved input device, or the system
+/// default when it is not connected.
 #[tauri::command]
 pub fn recording_sources(
     recorder: State<Arc<Recorder>>,
-    device_uid: Option<String>,
+    settings: State<Arc<SettingsStore>>,
 ) -> Result<Sources, String> {
     let devices = mac::input_devices().map_err(|err| err.to_string())?;
     let default = mac::default_input_uid();
-    let microphone =
-        super::core::pick_microphone(&devices, device_uid.as_deref(), default.as_deref())
-            .map(|d| d.name.clone());
+    let saved = settings.get().input_device;
+    let microphone = super::core::pick_microphone(&devices, saved.as_deref(), default.as_deref())
+        .map(|d| d.name.clone());
     Ok(Sources {
         microphone,
         computer_audio: recorder.last_computer_audio(),
@@ -64,18 +67,15 @@ pub fn recording_sources(
 }
 
 #[tauri::command]
-pub fn start_recording(app: AppHandle, device_uid: Option<String>) -> Result<Recording, String> {
-    start(&app, Source::Manual, device_uid)
+pub fn start_recording(app: AppHandle) -> Result<Recording, String> {
+    start(&app, Source::Manual)
 }
 
 /// Starts recording for Record or for the meeting prompt, and tells the
 /// window with a `recording-started` event, since the prompt may be
-/// answered in a notification.
-pub fn start(
-    app: &AppHandle,
-    source: Source,
-    device_uid: Option<String>,
-) -> Result<Recording, String> {
+/// answered in a notification. Every way to start reads the saved input
+/// device and quality here, once.
+pub fn start(app: &AppHandle, source: Source) -> Result<Recording, String> {
     // The same folder the library lists, so a new recording shows up there.
     let notes_dir = app.state::<Library>().notes_dir();
     let microphone = crate::setup::mac::microphone_access();
@@ -93,7 +93,8 @@ pub fn start(
             &notes_dir,
             mac::local_now(),
             source,
-            || mac::start(device_uid.as_deref()),
+            app.state::<Arc<SettingsStore>>().recording_options(),
+            mac::start,
             PROGRESS_INTERVAL,
             move |p| {
                 let _ = progress.emit(PROGRESS_EVENT, p);
@@ -104,17 +105,23 @@ pub fn start(
     Ok(recording)
 }
 
-/// Stops recording. With Generate notes automatically on, the note starts
-/// right away; off, the recording stays Saved until Generate note.
+/// Stops recording. Small is encoded to M4A first, which takes about a
+/// second per ten minutes, so this runs off the main thread. With Generate
+/// notes automatically on, the note starts right away; off, the recording
+/// stays Saved until Generate note.
 #[tauri::command]
-pub fn stop_recording(
-    recorder: State<Arc<Recorder>>,
-    pipeline: State<Arc<Pipeline>>,
-    settings: State<NoteSettings>,
+pub async fn stop_recording(
+    recorder: State<'_, Arc<Recorder>>,
+    pipeline: State<'_, Arc<Pipeline>>,
+    settings: State<'_, Arc<SettingsStore>>,
 ) -> Result<Saved, String> {
-    let saved = recorder.stop().map_err(|err| err.to_string())?;
-    if let Err(err) = pipeline.after_recording(&saved.folder, settings.generate_notes_automatically)
-    {
+    let recorder = recorder.inner().clone();
+    let saved = tauri::async_runtime::spawn_blocking(move || recorder.stop())
+        .await
+        .map_err(|err| err.to_string())?
+        .map_err(|err| err.to_string())?;
+    let automatic = settings.get().generate_notes_automatically;
+    if let Err(err) = pipeline.after_recording(&saved.folder, automatic) {
         // The recording is saved either way; its note can be generated later.
         eprintln!("Anchovy couldn't start the note. {err}");
     }

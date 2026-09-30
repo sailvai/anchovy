@@ -1,5 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
-import { defaultCommands, emitFakeEvent, installFakeIpc, type FakeCommands } from "./fake-ipc";
+import {
+  byFolder,
+  defaultCommands,
+  emitFakeEvent,
+  installFakeIpc,
+  type FakeCommands,
+} from "./fake-ipc";
 
 // The same recordings and note as the accepted mock in design/mock/src/data.ts.
 const recordings = [
@@ -87,6 +93,17 @@ const models = (summaryReady: boolean) => ({
   ],
 });
 
+// Every recording has its audio, as in the mock: the Saved one was recorded
+// Small.
+const audio = byFolder(
+  Object.fromEntries(
+    recordings.map(({ folder }) => {
+      const name = folder === "2026-09-25-1000" ? "audio.m4a" : "audio.wav";
+      return [folder, { path: `/Users/someone/Documents/Anchovy/${folder}/${name}`, name }];
+    }),
+  ),
+);
+
 // The Working recording is 27 of 42 minutes into its transcript, as in the mock.
 const transcribing = {
   folder: "2026-09-26-1410",
@@ -110,8 +127,13 @@ async function open(
     read_note: note,
     list_models: models(true),
     // The mock's Saved recording is waiting for Generate note.
-    note_settings: { generate_notes_automatically: false },
+    get_settings: {
+      input_device: null,
+      recording_quality: "high",
+      generate_notes_automatically: false,
+    },
     note_progress: { [transcribing.folder]: transcribing },
+    recording_audio: audio,
     ...commands,
   });
   await page.goto("/");
@@ -139,6 +161,9 @@ for (const colorScheme of ["light", "dark"] as const) {
   test(`empty library, ${colorScheme}`, async ({ page }) => {
     await open(page, colorScheme, []);
     await expect(page.getByText("No recordings yet")).toBeVisible();
+    // The sources have loaded, as in the mock.
+    await expect(page.getByText("Will be recorded")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Record" }).first()).toBeEnabled();
     await snap(page, `library-empty-${colorScheme}.png`);
   });
 
@@ -166,6 +191,8 @@ for (const colorScheme of ["light", "dark"] as const) {
       await page.getByRole("button", { name: new RegExp(`^${time}`) }).click();
       await expect(page.getByRole("heading", { level: 1 })).toContainText(time);
       await expect(page.getByText(shows[status as keyof typeof shows]).first()).toBeVisible();
+      // Every one of these recordings has audio, so the player is at the top.
+      await expect(page.getByRole("group", { name: "Audio" })).toBeVisible();
       await snap(page, `note-${status}-${colorScheme}.png`);
     });
   }
@@ -174,6 +201,7 @@ for (const colorScheme of ["light", "dark"] as const) {
     await open(page, colorScheme, recordings);
     await page.getByRole("button", { name: /^16:45/ }).click();
     await expect(page.getByText("Action items")).toBeVisible();
+    await expect(page.getByRole("group", { name: "Audio" })).toBeVisible();
     await page.getByRole("button", { name: "More actions" }).click();
     await page.getByRole("menuitem", { name: "Regenerate note…" }).click();
     await expect(page.getByRole("alertdialog", { name: "Replace note.md?" })).toBeVisible();
@@ -185,9 +213,31 @@ for (const colorScheme of ["light", "dark"] as const) {
   test(`more actions menu, ${colorScheme}`, async ({ page }) => {
     await open(page, colorScheme, recordings);
     await page.getByRole("button", { name: /^16:45/ }).click();
+    await expect(page.getByRole("group", { name: "Audio" })).toBeVisible();
     await page.getByRole("button", { name: "More actions" }).click();
     await expect(page.getByRole("menuitem", { name: "Move to Trash" })).toBeVisible();
     await snap(page, `note-menu-${colorScheme}.png`);
+  });
+
+  // The mock's Settings screen: the defaults, on a MacBook Pro.
+  test(`settings, ${colorScheme}`, async ({ page }) => {
+    await open(page, colorScheme, recordings, {
+      list_input_devices: [
+        { uid: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone", is_default: true },
+      ],
+      get_settings: {
+        input_device: null,
+        recording_quality: "high",
+        generate_notes_automatically: true,
+      },
+    });
+    await page.getByRole("button", { name: "Settings" }).click();
+    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Input device" })).toHaveText(
+      "MacBook Pro Microphone",
+    );
+    await expect(page.getByRole("switch", { name: "Generate notes automatically" })).toBeEnabled();
+    await snap(page, `settings-${colorScheme}.png`);
   });
 
   // The mock's meeting-banner screen: Zoom has started while the Ready note
@@ -203,6 +253,7 @@ for (const colorScheme of ["light", "dark"] as const) {
     });
     await page.getByRole("button", { name: /^16:45/ }).click();
     await expect(page.getByText("Action items")).toBeVisible();
+    await expect(page.getByRole("group", { name: "Audio" })).toBeVisible();
     await expect(page.getByRole("status", { name: "Meeting prompt" })).toBeVisible();
     await snap(page, `meeting-banner-${colorScheme}.png`);
   });

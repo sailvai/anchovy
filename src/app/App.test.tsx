@@ -1,6 +1,6 @@
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC, clearMocks } from "@tauri-apps/api/mocks";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { NoteView, Recording } from "../features/library/library";
 import type { SetupStatus } from "../ipc/setup";
@@ -247,6 +247,7 @@ function fakeFirstLaunchThenRecording() {
             folder: live,
             microphone: "MacBook Air Microphone",
             computer_audio: "not_allowed",
+            quality: "high",
           };
         case "stop_recording":
           list = [{ ...list[0], duration_seconds: 3, status: "saved" }];
@@ -452,8 +453,12 @@ function fakeNotes(
           return list;
         case "read_note":
           return note;
-        case "note_settings":
-          return { generate_notes_automatically: automatic };
+        case "get_settings":
+          return {
+            input_device: null,
+            recording_quality: "high",
+            generate_notes_automatically: automatic,
+          };
         case "note_progress":
           return progress;
         case "resume_waiting_notes":
@@ -680,4 +685,134 @@ test("selecting a Working recording asks where its note is", async () => {
     ),
   ).toBeInTheDocument();
   expect(calls.map(({ cmd }) => cmd)).toContain("note_progress");
+});
+
+// Two notes folders: the library lists whichever one is current.
+function fakeTwoFolders() {
+  const vault = {
+    path: "/Users/someone/Notes/Vault",
+    display: "~/Notes/Vault",
+    exists: true,
+    obsidian_vault: true,
+  };
+  let setup: SetupStatus = ready;
+  const inVault: Recording[] = [
+    {
+      folder: "2026-09-26-0800",
+      start: "2026-09-26T08:00",
+      duration_seconds: 600,
+      status: "saved",
+    },
+  ];
+  const calls: Call[] = [];
+  mockIPC(
+    (cmd, args) => {
+      calls.push({ cmd, args });
+      const shared = windowCommand(cmd, setup);
+      if (shared !== undefined) return shared;
+      switch (cmd) {
+        case "list_recordings":
+          return setup.notes_folder === vault ? inVault : recordings;
+        case "read_note":
+          return note;
+        case "get_settings":
+          return {
+            input_device: null,
+            recording_quality: "high",
+            generate_notes_automatically: true,
+          };
+        case "list_input_devices":
+          return [{ uid: "BuiltIn", name: "MacBook Air Microphone", is_default: true }];
+        case "choose_notes_folder":
+          setup = { ...setup, notes_folder: vault };
+          return vault;
+        case "start_recording":
+          return {
+            folder: "/Users/someone/Documents/Anchovy/2026-09-26-1502",
+            microphone: "MacBook Air Microphone",
+            computer_audio: "recording",
+            quality: "high",
+          };
+      }
+    },
+    { shouldMockEvents: true },
+  );
+  return calls;
+}
+
+test("Settings replaces the right side, like Models, and closes again", async () => {
+  fakeTwoFolders();
+  render(<App />);
+  const button = await screen.findByRole("button", { name: "Settings" });
+  expect(button).toBeEnabled();
+
+  fireEvent.click(button);
+
+  expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+  expect(button).toHaveAttribute("aria-pressed", "true");
+  expect(screen.queryByRole("heading", { name: "Ready to record" })).not.toBeInTheDocument();
+  fireEvent.click(button);
+  expect(await screen.findByRole("heading", { name: "Ready to record" })).toBeInTheDocument();
+});
+
+test("changing the notes folder rescans the library and clears the selection", async () => {
+  const calls = fakeTwoFolders();
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /^16:45/ }));
+  expect(await screen.findByRole("heading", { name: "2026-09-25 16:45" })).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Change…" }));
+
+  await waitFor(() => expect(rows()).toEqual(["08:0010 minSaved"]));
+  expect(await screen.findByText("~/Notes/Vault")).toBeInTheDocument();
+  expect(calls.filter(({ cmd }) => cmd === "list_recordings").length).toBeGreaterThan(1);
+  // Nothing is selected, and leaving Settings goes home.
+  const nav = screen.getByRole("navigation", { name: "Recordings" });
+  expect(within(nav).queryByRole("button", { current: true })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  expect(await screen.findByRole("heading", { name: "Ready to record" })).toBeInTheDocument();
+});
+
+test("Record lets Rust use the saved device, and Change… is off while recording", async () => {
+  const calls = fakeTwoFolders();
+  render(<App />);
+  await screen.findByRole("heading", { name: "Ready to record" });
+
+  fireEvent.click(screen.getAllByRole("button", { name: "Record" })[0]);
+  expect(await screen.findByRole("button", { name: "Stop" })).toBeInTheDocument();
+  expect(calls.find(({ cmd }) => cmd === "start_recording")?.args).toEqual({});
+
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  expect(await screen.findByRole("button", { name: "Change…" })).toBeDisabled();
+});
+
+test("a Small recording says it is saved as M4A, with its size as it grows", async () => {
+  mockIPC(
+    (cmd) => {
+      const shared = windowCommand(cmd, ready);
+      if (shared !== undefined) return shared;
+      switch (cmd) {
+        case "list_recordings":
+          return [];
+        case "start_recording":
+          return {
+            folder: "/Users/someone/Documents/Anchovy/2026-09-26-1502",
+            microphone: "MacBook Air Microphone",
+            computer_audio: "recording",
+            quality: "small",
+          };
+      }
+    },
+    { shouldMockEvents: true },
+  );
+  render(<App />);
+  await screen.findByRole("heading", { name: "Ready to record" });
+
+  fireEvent.click(screen.getAllByRole("button", { name: "Record" })[0]);
+  await screen.findByRole("button", { name: "Stop" });
+  await act(() => emit("recording-progress", { seconds: 2.4, bytes: 230_444 }));
+
+  expect(screen.getByText("0.2 MB · M4A")).toBeInTheDocument();
+  expect(screen.getByText(/2026-09-26-1502\/audio\.m4a$/)).toBeInTheDocument();
 });

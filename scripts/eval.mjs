@@ -17,6 +17,11 @@
 // baseline. The first passing run writes the baseline; a sample new to it is
 // added on its first pass.
 //
+// Small quality (plan step 8): one short sample runs again as an M4A that
+// afconvert makes from its WAV at eval time. Its error rate is shown next to
+// the WAV run and must be within 1 point of it. It is not counted in the
+// totals and never goes into the baseline, and the audio is never committed.
+//
 //   npm run eval                      run every sample
 //   npm run eval -- --sample <id>     run one sample (repeatable)
 //   npm run eval -- --fetch           download the default models first
@@ -50,6 +55,10 @@ const runner = path.join(tauriDir, "target", "release", "examples", "eval");
 // Small enough that every short sample is summarized in two or more chunks.
 // A long sample sets its own size in sample.json.
 const SMALL_CHUNK_TOKENS = 120;
+// The sample that also runs as an M4A, and how far its error rate may be from
+// the WAV run's.
+const M4A_SAMPLE = "en-planning";
+const M4A_LIMIT = 0.01;
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { encoding: "utf8", maxBuffer: 1 << 26, ...options });
@@ -193,6 +202,30 @@ function sampleBaseline(r) {
   };
 }
 
+// The M4A run: afconvert makes AAC, mono, at the clip's 48 kHz, as Small
+// does. Kept out of `results`, so it never reaches the totals or the baseline.
+function runM4a(sample, clip, wavRun) {
+  if (!sample || !clip || !wavRun?.transcription) return null;
+  const m4aClip = clip.replace(/\.wav$/, ".m4a");
+  console.log(`=== ${sample.id} (m4a): afconvert to AAC, then the same pipeline`);
+  run("afconvert", ["-f", "m4af", "-d", "aac", "-c", "1", clip, m4aClip]);
+  const stdout = run(runner, [m4aClip]);
+  writeFileSync(path.join(clipsDir, `${sample.id}-m4a.json`), stdout);
+  const output = JSON.parse(stdout);
+  const result = score(sample, output, { scoreTranscript: true, mustChunk: false });
+  const wavRate = wavRun.transcription.edits / wavRun.transcription.length;
+  const m4aRate = result.transcription
+    ? result.transcription.edits / result.transcription.length
+    : null;
+  const problems = [...result.problems];
+  if (m4aRate != null && Math.abs(m4aRate - wavRate) > M4A_LIMIT) {
+    problems.push(
+      `Error rate ${percent(m4aRate)} as M4A is more than ${M4A_LIMIT * 100} point from ${percent(wavRate)} as WAV.`,
+    );
+  }
+  return { wavRate, m4aRate, problems };
+}
+
 function main() {
   const args = process.argv.slice(2);
   console.log("=== Building the eval runner (release)");
@@ -204,9 +237,11 @@ function main() {
   const only = args.flatMap((arg, i) => (args[i - 1] === "--sample" ? [arg] : []));
   const samples = loadSamples(only);
   const results = [];
+  const clips = {};
   for (const sample of samples) {
     console.log(`=== ${sample.id}: making the audio`);
     const clip = makeClip(sample, path.join(samplesDir, sample.id), clipsDir);
+    clips[sample.id] = clip;
     for (const variant of ["app", "chunked"]) {
       const chunkTokens = sample.summary_chunk_tokens ?? SMALL_CHUNK_TOKENS;
       const extra = variant === "chunked" ? ["--chunk-tokens", String(chunkTokens)] : [];
@@ -225,6 +260,12 @@ function main() {
       results.push(result);
     }
   }
+
+  const m4a = runM4a(
+    samples.find((sample) => sample.id === M4A_SAMPLE),
+    clips[M4A_SAMPLE],
+    results.find((r) => r.id === M4A_SAMPLE && r.variant === "app"),
+  );
 
   const current = { chinese_cer: rate(results, "zh"), english_wer: rate(results, "en") };
   console.log("\n=== Samples");
@@ -263,6 +304,17 @@ function main() {
   }
 
   const failures = results.flatMap((r) => r.problems.map((p) => `${r.id} (${r.variant}): ${p}`));
+  if (m4a) {
+    console.log(
+      `${M4A_SAMPLE} (m4a) | error ${m4a.m4aRate == null ? "none" : percent(m4a.m4aRate)} as M4A, ${percent(m4a.wavRate)} as WAV | difference ${m4a.m4aRate == null ? "n/a" : `${((m4a.m4aRate - m4a.wavRate) * 100).toFixed(1)} points`} (limit ${M4A_LIMIT * 100})`,
+    );
+    for (const problem of m4a.problems) console.log(`  FAIL ${problem}`);
+    failures.push(...m4a.problems.map((p) => `${M4A_SAMPLE} (m4a): ${p}`));
+  } else {
+    console.log(
+      `${M4A_SAMPLE} (m4a) | not run: the WAV run of ${M4A_SAMPLE} did not run or failed`,
+    );
+  }
   console.log("\n=== Totals");
   console.log(
     `Chinese character error rate: ${current.chinese_cer == null ? "no sample run" : percent(current.chinese_cer)}`,

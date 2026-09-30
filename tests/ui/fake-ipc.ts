@@ -1,7 +1,12 @@
 import type { Page } from "@playwright/test";
 
-// Fake Rust commands, keyed by command name. Values must be JSON.
+// Fake Rust commands, keyed by command name. Values must be JSON. A value
+// made with `byFolder` answers by the command's `folder` argument.
 export type FakeCommands = Record<string, unknown>;
+
+export function byFolder(answers: Record<string, unknown>) {
+  return { __byFolder: answers };
+}
 
 export const notesFolder = {
   path: "/Users/someone/Documents/Anchovy",
@@ -15,6 +20,8 @@ export const defaultCommands: FakeCommands = {
   list_models: { memory_bytes: 16 * 1024 ** 3, models: [] },
   list_recordings: [],
   read_note: { source: null, inputs: [], sections: [] },
+  // No recording has audio unless a test says so.
+  recording_audio: null,
   show_in_finder: null,
   move_to_trash: null,
   list_input_devices: [{ uid: "BuiltIn", name: "MacBook Air Microphone", is_default: true }],
@@ -29,7 +36,11 @@ export const defaultCommands: FakeCommands = {
     can_record: true,
   },
   check_computer_audio: "allowed",
-  note_settings: { generate_notes_automatically: true },
+  get_settings: {
+    input_device: null,
+    recording_quality: "high",
+    generate_notes_automatically: true,
+  },
   note_progress: {},
   generate_note: null,
   resume_waiting_notes: null,
@@ -55,10 +66,17 @@ export async function installFakeIpc(page: Page, commands: FakeCommands = defaul
         }
       },
       __TAURI_INTERNALS__: {
-        invoke: async (cmd: string, args?: { event?: string; handler?: number }) => {
+        invoke: async (
+          cmd: string,
+          args?: { event?: string; handler?: number; folder?: string },
+        ) => {
           if (cmd === "plugin:event|listen" && args?.event && args.handler !== undefined) {
             listeners.push({ event: args.event, handler: args.handler });
             return args.handler;
+          }
+          const answer = responses[cmd] as { __byFolder?: Record<string, unknown> } | undefined;
+          if (answer && typeof answer === "object" && "__byFolder" in answer) {
+            return answer.__byFolder?.[args?.folder ?? ""] ?? null;
           }
           if (cmd in responses) return responses[cmd];
           throw new Error(`No fake for command ${cmd}`);
@@ -69,6 +87,10 @@ export async function installFakeIpc(page: Page, commands: FakeCommands = defaul
           return id;
         },
         unregisterCallback: (id: number) => callbacks.delete(id),
+        // Chromium has no asset: scheme, so a same-origin path stands in.
+        // The player reads nothing until Play, and shows the length the
+        // library read.
+        convertFileSrc: (filePath: string) => `/fake-asset/${encodeURIComponent(filePath)}`,
         metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
       },
     });

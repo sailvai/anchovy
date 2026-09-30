@@ -43,6 +43,7 @@ const started = {
   folder: "/Users/someone/Documents/Anchovy/2026-09-26-1500",
   microphone: "MacBook Air Microphone",
   computer_audio: "recording",
+  quality: "high",
 };
 
 type Call = { cmd: string; args: unknown };

@@ -67,6 +67,9 @@ for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
     await installFakeIpc(page, { ...defaultCommands, list_models: models });
     await page.goto("/");
+    // The sidebar has loaded: the list, and Record enabled.
+    await expect(page.getByText("No recordings yet")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Record" }).first()).toBeEnabled();
     await page.getByRole("button", { name: "Models" }).click();
     await expect(page.getByText("This Mac has 8 GB of memory.")).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
@@ -77,6 +80,9 @@ for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
     await installFakeIpc(page, { ...defaultCommands, list_models: models });
     await page.goto("/");
+    // The sidebar has loaded: the list, and Record enabled.
+    await expect(page.getByText("No recordings yet")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Record" }).first()).toBeEnabled();
     await page.getByRole("button", { name: "Models" }).click();
     await page.getByRole("radio", { name: "Use Qwen3-4B Instruct 2507 (8-bit)" }).click();
     await expect(page.getByRole("button", { name: "Use anyway" })).toBeVisible();

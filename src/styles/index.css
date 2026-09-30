@@ -78,3 +78,33 @@
     line-height: 1.45;
   }
 }
+
+/*
+ * The note's seek bar, as in the mock: a thin gray track and a small round
+ * thumb. What has played is a darker gray, not a color.
+ */
+@layer components {
+  .seek {
+    appearance: none;
+    background: linear-gradient(
+      to right,
+      var(--color-faint) var(--progress, 0%),
+      var(--color-line) var(--progress, 0%)
+    );
+    border-radius: 9999px;
+    outline: none;
+  }
+
+  .seek::-webkit-slider-thumb {
+    appearance: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 9999px;
+    border: 1px solid var(--color-line-strong);
+    background: var(--color-surface);
+  }
+
+  .seek:focus-visible::-webkit-slider-thumb {
+    border-color: var(--color-accent);
+  }
+}

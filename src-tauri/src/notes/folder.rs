@@ -44,6 +44,16 @@ impl Quality {
     }
 }
 
+/// The recording's audio file and its quality: `audio.wav` for High,
+/// `audio.m4a` for Small. `None` while Small is still recording, or before
+/// any audio exists.
+pub fn audio_file(recording_dir: &Path) -> Option<(PathBuf, Quality)> {
+    [Quality::High, Quality::Small]
+        .into_iter()
+        .map(|quality| (recording_dir.join(quality.audio_file_name()), quality))
+        .find(|(path, _)| path.is_file())
+}
+
 /// The base name, then the base name with `-2`, `-3`, and so on.
 fn candidates(start: &StartTime) -> impl Iterator<Item = String> {
     let base = start.folder_name();

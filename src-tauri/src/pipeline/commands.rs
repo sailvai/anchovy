@@ -8,7 +8,7 @@ use std::sync::Arc;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
-use super::{Event, NoteSettings, Pipeline, Stage};
+use super::{Event, Pipeline, Stage};
 use crate::library::Library;
 
 pub const PROGRESS_EVENT: &str = "note-progress";
@@ -79,11 +79,6 @@ pub fn note_progress(
         .into_iter()
         .filter_map(|path| Some((folder_name(&path), pipeline.stage(&path)?)))
         .collect()
-}
-
-#[tauri::command]
-pub fn note_settings(settings: State<NoteSettings>) -> NoteSettings {
-    settings.inner().clone()
 }
 
 /// After a download: start the notes that were waiting for models.

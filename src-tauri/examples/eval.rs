@@ -24,7 +24,7 @@ use anchovy_lib::engines::{
 use anchovy_lib::models::catalog::{Catalog, Role};
 use anchovy_lib::models::store::Store;
 use anchovy_lib::models::{download, mac};
-use anchovy_lib::notes::folder::{create_recording_folder, StartTime};
+use anchovy_lib::notes::folder::{create_recording_folder, Quality, StartTime};
 use anchovy_lib::notes::state::{write_state, Input, State, Status};
 use anchovy_lib::pipeline::{self, Deps, ModelSource};
 use serde::Serialize;
@@ -220,7 +220,13 @@ fn run(clip: &Path, rest: &[String]) -> Result<(), String> {
         second: 0,
     };
     let folder: PathBuf = create_recording_folder(&notes_dir, &start).map_err(|e| e.to_string())?;
-    fs::copy(clip, folder.join("audio.wav")).map_err(|err| format!("{}: {err}", clip.display()))?;
+    // A Small recording is audio.m4a; everything else is copied as High.
+    let quality = match clip.extension().and_then(|ext| ext.to_str()) {
+        Some("m4a") => Quality::Small,
+        _ => Quality::High,
+    };
+    fs::copy(clip, folder.join(quality.audio_file_name()))
+        .map_err(|err| format!("{}: {err}", clip.display()))?;
     let mut state = State::new();
     state.inputs = vec![Input::Microphone];
     state

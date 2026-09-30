@@ -40,6 +40,7 @@ for (const colorScheme of ["light", "dark"] as const) {
         folder: `/Users/someone/Documents/Anchovy/${live.folder}`,
         microphone: "MacBook Air Microphone",
         computer_audio: "recording",
+        quality: "high",
       },
     });
     await page.getByRole("button", { name: "Record" }).first().click();

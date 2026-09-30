@@ -18,21 +18,20 @@ pub mod commands;
 
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
-use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::engines::audio::{read_model_audio, MODEL_RATE};
 use crate::engines::summary::{self, Summary};
 use crate::engines::windows::{self, Joiner, Segment, OVERLAP_SECONDS, WINDOW_SECONDS};
 use crate::engines::{Engines, ModelFiles};
 use crate::models::catalog::Role;
-use crate::notes::folder::{Quality, StartTime};
+use crate::notes::folder::{audio_file, StartTime};
 use crate::notes::note::{write_note, Note, NOTE_FILE};
 use crate::notes::state::{read_state, write_state, Input, State, Status};
 use crate::notes::NotesError;
@@ -146,15 +145,9 @@ pub fn run(folder: &Path, deps: &Deps, on_stage: &mut dyn FnMut(Stage)) -> Resul
     }
     let start = start_time(folder).ok_or("The recording folder is not named by its start time.")?;
 
-    // 1. The audio, as the transcription model takes it.
-    let audio = folder.join(Quality::High.audio_file_name());
-    if !audio.is_file() {
-        return Err(if folder.join(Quality::Small.audio_file_name()).is_file() {
-            "Anchovy can't read M4A recordings yet.".into()
-        } else {
-            "The audio file is missing.".into()
-        });
-    }
+    // 1. The audio, as the transcription model takes it: audio.wav for High,
+    // audio.m4a for Small.
+    let (audio, quality) = audio_file(folder).ok_or("The audio file is missing.")?;
     let samples = read_model_audio(&audio).map_err(|err| err.to_string())?;
     let rate = f64::from(MODEL_RATE);
     let audio_seconds = samples.len() as f64 / rate;
@@ -244,7 +237,8 @@ pub fn run(folder: &Path, deps: &Deps, on_stage: &mut dyn FnMut(Stage)) -> Resul
         duration_seconds: audio_seconds as u64,
         source: state.source,
         computer_audio: state.inputs.contains(&Input::ComputerAudio),
-        quality: Quality::High,
+        // Names the file in `audio:` and the Audio link.
+        quality,
         asr_model: asr.display_name.clone(),
         summary_model: llm.display_name.clone(),
         summary: summary.summary.clone(),
@@ -334,34 +328,6 @@ fn start_time(folder: &Path) -> Option<StartTime> {
         minute: num(13..15)? as u8,
         second: 0,
     })
-}
-
-/// Settings the pipeline reads. The Settings screen (plan step 8) edits
-/// them; until then the file only exists if written by hand.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct NoteSettings {
-    /// Start a note as soon as a recording stops. On by default.
-    pub generate_notes_automatically: bool,
-}
-
-impl Default for NoteSettings {
-    fn default() -> Self {
-        NoteSettings {
-            generate_notes_automatically: true,
-        }
-    }
-}
-
-pub const SETTINGS_FILE: &str = "settings.json";
-
-/// Reads `settings.json` from the app's support folder. A missing or
-/// unreadable file means the defaults.
-pub fn read_settings(dir: &Path) -> NoteSettings {
-    fs::read(dir.join(SETTINGS_FILE))
-        .ok()
-        .and_then(|data| serde_json::from_slice(&data).ok())
-        .unwrap_or_default()
 }
 
 #[derive(Debug)]
@@ -627,6 +593,11 @@ impl Pipeline {
         }
     }
 
+    /// Tells the interface that a recording changed outside the pipeline.
+    pub fn changed(&self, folder: &Path) {
+        self.inner.changed(folder);
+    }
+
     /// Where a queued or running note is.
     pub fn stage(&self, folder: &Path) -> Option<Stage> {
         self.inner.queue.lock().unwrap().stages.get(folder).cloned()
@@ -650,6 +621,7 @@ mod tests {
     use crate::notes::note::NOTE_TMP_FILE;
     use crate::notes::test_dir::TestDir;
     use crate::notes::APP_DIR;
+    use std::fs;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     const START: StartTime = StartTime {
@@ -1072,6 +1044,62 @@ We planned the launch.
             Some("Qwen3-4B-Instruct-2507")
         );
         assert!(!s.folder.join(APP_DIR).join(NOTE_TMP_FILE).exists());
+    }
+
+    #[test]
+    fn a_small_recording_in_m4a_becomes_a_ready_note_that_links_audio_m4a() {
+        use crate::recording::small::Encoder;
+        let s = setup(&[VALID]);
+        // As Small leaves it: audio.m4a and no audio.wav, 70 s at 48 kHz.
+        let wav = s.folder.join(APP_DIR).join("recording.wav");
+        let mut writer = crate::recording::file_writer::WavWriter::new(
+            std::io::BufWriter::new(fs::File::create(&wav).unwrap()),
+            48_000,
+        )
+        .unwrap();
+        let tone: Vec<f32> = (0..70 * 48_000)
+            .map(|i| 0.1 * (i as f32 * 0.05 / 3.0).sin())
+            .collect();
+        writer.write(&tone).unwrap();
+        writer.finish().unwrap();
+        crate::m4a::mac::MacEncoder
+            .encode(&wav, &s.folder.join("audio.m4a"))
+            .unwrap();
+        fs::remove_file(&wav).unwrap();
+        fs::remove_file(s.folder.join("audio.wav")).unwrap();
+
+        s.pipeline.generate(&s.folder, false).unwrap();
+        s.pipeline.wait_idle();
+
+        assert_eq!(status(&s.folder), Status::Ready);
+        let text = note(&s.folder).unwrap();
+        assert!(text.contains("\naudio: audio.m4a\n"), "{text}");
+        assert!(
+            text.ends_with("## Audio\n\n[audio.m4a](audio.m4a)\n"),
+            "{text}"
+        );
+        assert!(text.contains("\nduration: 00:01:10\n"), "{text}");
+        assert_eq!(
+            s.engines.log.entries()[..4],
+            [
+                "load asr",
+                "transcribe 30 s",
+                "transcribe 30 s",
+                "transcribe 16 s"
+            ]
+        );
+        assert!(!s.folder.join("audio.wav").exists());
+    }
+
+    #[test]
+    fn a_recording_without_audio_fails_with_the_reason() {
+        let s = setup(&[VALID]);
+        fs::remove_file(s.folder.join("audio.wav")).unwrap();
+
+        s.pipeline.generate(&s.folder, false).unwrap();
+        s.pipeline.wait_idle();
+
+        assert_eq!(failed_reason(&s.folder), "The audio file is missing.");
     }
 
     #[test]
@@ -1539,6 +1567,29 @@ We planned the launch.
     }
 
     #[test]
+    fn a_note_being_written_finishes_in_its_folder_after_the_notes_folder_changes() {
+        let s = setup(&[VALID]);
+        let old_notes = s.folder.parent().unwrap().to_path_buf();
+        let library = crate::library::Library::new(old_notes);
+        let new_notes = TestDir::new();
+        let release = Arc::new(Mutex::new(()));
+        let held = release.lock().unwrap();
+        let wait = release.clone();
+        *s.engines.during.lock().unwrap() = Some(Box::new(move || drop(wait.lock().unwrap())));
+
+        s.pipeline.generate(&s.folder, false).unwrap();
+        // Settings: Change… while the note is being transcribed.
+        library.set_notes_dir(new_notes.path().to_path_buf());
+        drop(held);
+        s.pipeline.wait_idle();
+
+        assert_eq!(status(&s.folder), Status::Ready);
+        assert!(note(&s.folder).is_some());
+        assert_eq!(fs::read_dir(new_notes.path()).unwrap().count(), 0);
+        assert!(library.list().unwrap().is_empty());
+    }
+
+    #[test]
     fn a_recording_still_recording_cannot_get_a_note() {
         let s = setup(&[VALID]);
         write_state(&s.folder, &State::new()).unwrap();
@@ -1572,19 +1623,5 @@ We planned the launch.
 
         assert_eq!(status(&s.folder), Status::Ready);
         assert!(note(&s.folder).is_some());
-    }
-
-    #[test]
-    fn automatic_notes_are_on_unless_turned_off() {
-        let dir = TestDir::new();
-        assert!(read_settings(dir.path()).generate_notes_automatically);
-        fs::write(dir.path().join(SETTINGS_FILE), "not json").unwrap();
-        assert!(read_settings(dir.path()).generate_notes_automatically);
-        fs::write(
-            dir.path().join(SETTINGS_FILE),
-            r#"{"generate_notes_automatically": false}"#,
-        )
-        .unwrap();
-        assert!(!read_settings(dir.path()).generate_notes_automatically);
     }
 }

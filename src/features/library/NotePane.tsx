@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { listModels, onModelsChanged, type ModelView } from "../../ipc/models";
-import { noteSettings, type Stage } from "../../ipc/notes";
+import type { Stage } from "../../ipc/notes";
+import { getSettings } from "../../ipc/settings";
 import {
   AlertIcon,
   CheckIcon,
@@ -16,11 +17,14 @@ import {
   inputsLabel,
   noteBlocks,
   readNote,
+  recordingAudio,
   sourceLabel,
   startTitle,
   type NoteView,
   type Recording,
+  type RecordingAudio,
 } from "./library";
+import { Player } from "./Player";
 import { headline, missingModels, missingTitle, reasonDetail, transcribedLabel } from "./notes";
 import { Button, Progress } from "./ui";
 
@@ -65,6 +69,28 @@ export function NotePane({
   const [models, setModels] = useState<ModelView[] | null>(null);
   const [automatic, setAutomatic] = useState<boolean | null>(null);
   const noteState = loaded.folder === folder ? loaded.state : null;
+  const [audio, setAudio] = useState<{
+    folder: string;
+    audio: RecordingAudio | null;
+    // Why the audio cannot be played, when Rust says so.
+    error?: string;
+  }>({ folder, audio: null });
+  const beingRecorded = status === "recording";
+
+  // The player, for any recording with audio, except while it is recorded.
+  useEffect(() => {
+    if (beingRecorded) return;
+    let current = true;
+    recordingAudio(folder).then(
+      (found) => current && setAudio({ folder, audio: found }),
+      (err) => current && setAudio({ folder, audio: null, error: message(err) }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [folder, beingRecorded]);
+  const playable = !beingRecorded && audio.folder === folder ? audio.audio : null;
+  const unplayable = !beingRecorded && audio.folder === folder ? audio.error : undefined;
 
   useEffect(() => {
     if (status !== "ready") return;
@@ -99,7 +125,7 @@ export function NotePane({
   useEffect(() => {
     if (status !== "saved") return;
     let current = true;
-    noteSettings().then(
+    getSettings().then(
       (settings) => current && setAutomatic(settings?.generate_notes_automatically ?? null),
       () => {},
     );
@@ -181,6 +207,16 @@ export function NotePane({
       )}
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
         <div className="max-w-[620px]">
+          {unplayable && (
+            <p className="mb-6 flex h-11 items-center rounded-lg border border-line px-4 text-[12px] text-muted">
+              {unplayable}
+            </p>
+          )}
+          {playable && (
+            <div className="mb-6">
+              <Player key={playable.path} audio={playable} seconds={recording.duration_seconds} />
+            </div>
+          )}
           {status === "ready" ? (
             noteState && "error" in noteState ? (
               <Panel title="Anchovy can't read note.md" tone="failed">

@@ -170,3 +170,27 @@ export function Spinner({ className = "" }: { className?: string }) {
     </svg>
   );
 }
+
+export function ChevronDownIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="m4.5 6.25 3.5 3.5 3.5-3.5" />
+    </Svg>
+  );
+}
+
+export function PlayIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 3.25v9.5l7.5-4.75z" fill="currentColor" />
+    </Svg>
+  );
+}
+
+export function PauseIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5.5 3.5v9M10.5 3.5v9" strokeWidth="2" />
+    </Svg>
+  );
+}

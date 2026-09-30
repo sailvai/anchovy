@@ -5,7 +5,9 @@
 // would be), starting 1.5 s into a 5-second recording by the app's own
 // recording module, then
 // checks automatically that the computer-audio stream was captured and the
-// tone is in the saved file. It also runs the first-launch computer audio
+// tone is in the saved file. It does this at High (audio.wav) and again at
+// Small (audio.m4a, read back with the system decoder). It also runs the
+// first-launch computer audio
 // check, which must report the permission as given. The microphone needs a person speaking; that
 // check is manual (plan 8.9) and is only reported here.
 //
@@ -88,20 +90,33 @@ function report(name, output, status) {
   return { name, ok };
 }
 
-async function unsandboxed(binary) {
-  console.log(`\n=== Loopback, unsandboxed: record ${seconds} s while afplay plays ${toneHz} Hz`);
-  const out = path.join(work, "unsandboxed");
+async function unsandboxed(binary, quality = "high") {
+  const format = quality === "small" ? "Small, audio.m4a" : "High, audio.wav";
+  console.log(
+    `\n=== Loopback, unsandboxed, ${format}: record ${seconds} s while afplay plays ${toneHz} Hz`,
+  );
+  const out = path.join(work, `unsandboxed-${quality}`);
   rmSync(out, { recursive: true, force: true });
   const result = await withTone(binary, () =>
     collect(
       spawn(
         binary,
-        ["record", "--seconds", String(seconds), "--tone-hz", String(toneHz), "--out", out],
+        [
+          "record",
+          "--seconds",
+          String(seconds),
+          "--tone-hz",
+          String(toneHz),
+          "--out",
+          out,
+          "--quality",
+          quality,
+        ],
         { stdio: ["ignore", "pipe", "inherit"] },
       ),
     ),
   );
-  return report("Loopback, unsandboxed", result.stdout ?? "", result.status);
+  return report(`Loopback, unsandboxed, ${format}`, result.stdout ?? "", result.status);
 }
 
 // The same binary wrapped in a .app with the app's entitlements and usage
@@ -204,7 +219,11 @@ function probe(binary) {
 
 mkdirSync(work, { recursive: true });
 const binary = build();
-const results = [probe(binary), await unsandboxed(binary)];
+const results = [
+  probe(binary),
+  await unsandboxed(binary, "high"),
+  await unsandboxed(binary, "small"),
+];
 if (sandboxed) results.push(await sandboxedRun(binary));
 
 console.log("\n=== verify:device summary");

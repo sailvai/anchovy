@@ -3,7 +3,9 @@
 //! The header is rewritten while recording, not only at the end, so the file
 //! on disk stays playable up to the last update even if the app is killed.
 
-use std::io::{self, Seek, SeekFrom, Write};
+use std::fs::OpenOptions;
+use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::path::Path;
 
 pub const HEADER_BYTES: u64 = 44;
 const BYTES_PER_SAMPLE: u64 = 2;
@@ -113,6 +115,35 @@ impl<W: Write + Seek> WavWriter<W> {
     }
 }
 
+/// Makes the header of a WAV this writer wrote agree with the samples on
+/// disk, as after a crash, when the last header update may be a second
+/// behind. Returns the seconds of audio in it.
+pub fn repair_header(path: &Path) -> io::Result<f64> {
+    let mut file = OpenOptions::new().read(true).write(true).open(path)?;
+    let mut header = [0u8; HEADER_BYTES as usize];
+    file.read_exact(&mut header)?;
+    if &header[..4] != b"RIFF" || &header[8..16] != b"WAVEfmt " || &header[36..40] != b"data" {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "not a WAV file Anchovy wrote",
+        ));
+    }
+    let rate = u32::from_le_bytes(header[24..28].try_into().unwrap());
+    let len = file.metadata()?.len();
+    // Whole samples only, and never past what a RIFF size can say.
+    let data = (len.saturating_sub(HEADER_BYTES) / BYTES_PER_SAMPLE * BYTES_PER_SAMPLE)
+        .min(MAX_DATA_BYTES / BYTES_PER_SAMPLE * BYTES_PER_SAMPLE);
+    file.seek(SeekFrom::Start(4))?;
+    file.write_all(&(data as u32 + (HEADER_BYTES as u32 - 8)).to_le_bytes())?;
+    file.seek(SeekFrom::Start(40))?;
+    file.write_all(&(data as u32).to_le_bytes())?;
+    file.sync_all()?;
+    if rate == 0 {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "no sample rate"));
+    }
+    Ok((data / BYTES_PER_SAMPLE) as f64 / f64::from(rate))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,5 +242,42 @@ mod tests {
         writer.write(&[0.0]).unwrap();
         let err = writer.write(&[0.0]).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::FileTooLarge);
+    }
+
+    #[test]
+    fn a_header_left_behind_by_a_killed_app_is_repaired() {
+        let dir = crate::notes::test_dir::TestDir::new();
+        let path = dir.path().join("recording.wav");
+        let mut writer = WavWriter::new(std::fs::File::create(&path).unwrap(), 48_000).unwrap();
+        writer.write(&[0.5; 24_000]).unwrap();
+        writer.update_header().unwrap();
+        // Written after the last update, then the app was killed.
+        writer.write(&[0.5; 24_000]).unwrap();
+        drop(writer);
+        let mut bytes = std::fs::read(&path).unwrap();
+        // A half sample at the end, cut off mid-write.
+        bytes.push(0x7f);
+        std::fs::write(&path, &bytes).unwrap();
+        assert_eq!(u32_at(&bytes, 40), 48_000);
+
+        let seconds = repair_header(&path).unwrap();
+
+        assert_eq!(seconds, 1.0);
+        let bytes = std::fs::read(&path).unwrap();
+        assert_eq!(u32_at(&bytes, 40), 96_000);
+        assert_eq!(u32_at(&bytes, 4), 36 + 96_000);
+        assert_eq!(samples(&bytes[..44 + 96_000]).len(), 48_000);
+    }
+
+    #[test]
+    fn repair_refuses_a_file_it_did_not_write() {
+        let dir = crate::notes::test_dir::TestDir::new();
+        let path = dir.path().join("notes.md");
+        std::fs::write(&path, vec![b'#'; 100]).unwrap();
+        assert_eq!(
+            repair_header(&path).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), vec![b'#'; 100]);
     }
 }

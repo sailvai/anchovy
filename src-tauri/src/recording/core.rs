@@ -18,9 +18,11 @@ use serde::Serialize;
 
 use super::file_writer::WavWriter;
 use super::mixer::{Mixer, OUTPUT_RATE};
+use super::small::{self, Encoder};
 use crate::notes::folder::{create_recording_folder, Quality, StartTime};
 use crate::notes::note::Source;
 use crate::notes::state::{write_state, Input, State, Status};
+use crate::settings::RecordingOptions;
 
 /// Core Audio objects Anchovy creates (the private aggregate device) have UIDs
 /// starting with this, so they never show up as an input device to choose.
@@ -458,6 +460,8 @@ pub struct Recording {
     pub folder: PathBuf,
     pub microphone: String,
     pub computer_audio: ComputerAudio,
+    /// Read from the settings when the recording started.
+    pub quality: Quality,
 }
 
 /// A finished recording.
@@ -534,15 +538,34 @@ fn run_writer(
 fn save(
     folder: &Path,
     audio: &Path,
-    mut state: State,
+    state: State,
     finished: Finished,
     stopped: Result<(), RecordingError>,
 ) -> Result<Saved, RecordingError> {
-    state.inputs = recorded_inputs(&finished.levels);
+    let state = mark_saved(folder, &state, &finished.levels)?;
+    report(folder, audio, state, finished, stopped)
+}
+
+/// Writes `state` as Saved, with the inputs that reached the file. The state
+/// passed in is left as it was if that fails.
+fn mark_saved(folder: &Path, state: &State, levels: &Levels) -> Result<State, RecordingError> {
+    let mut state = state.clone();
+    state.inputs = recorded_inputs(levels);
     state
         .move_to(Status::Saved)
         .map_err(|err| RecordingError::Disk(err.to_string()))?;
     write_state(folder, &state).map_err(|err| RecordingError::Disk(err.to_string()))?;
+    Ok(state)
+}
+
+/// The first error, if any, once the recording is Saved.
+fn report(
+    folder: &Path,
+    audio: &Path,
+    state: State,
+    finished: Finished,
+    stopped: Result<(), RecordingError>,
+) -> Result<Saved, RecordingError> {
     if let Some(err) = finished.error {
         return Err(err.into());
     }
@@ -561,7 +584,10 @@ fn save(
 /// One recording from start to Saved.
 pub struct Session {
     folder: PathBuf,
+    /// The file being written: `audio.wav`, or for Small the WAV in
+    /// `.anchovy/` that becomes `audio.m4a` on stop.
     audio: PathBuf,
+    quality: Quality,
     state: State,
     capture: Box<dyn Capture>,
     stop: Arc<AtomicBool>,
@@ -570,13 +596,14 @@ pub struct Session {
 
 impl Session {
     /// Creates the recording folder, marks it Recording with the inputs being
-    /// captured, and starts writing `audio.wav`. If any of that fails, the
-    /// capture is stopped. `stop` later corrects the inputs to what reached
-    /// the file.
+    /// captured, and starts writing the WAV: `audio.wav` for High, the
+    /// hidden one for Small. If any of that fails, the capture is stopped.
+    /// `stop` later corrects the inputs to what reached the file.
     pub fn start(
         notes_dir: &Path,
         start: StartTime,
         source: Source,
+        quality: Quality,
         started: Started,
         tick: Duration,
         on_progress: impl Fn(Progress) + Send + 'static,
@@ -594,7 +621,8 @@ impl Session {
             state.inputs = computer_audio.inputs();
             state.source = source;
             write_state(&folder, &state).map_err(|err| RecordingError::Disk(err.to_string()))?;
-            let audio = folder.join(Quality::High.audio_file_name());
+            // write_state made `.anchovy/`, where Small's WAV goes.
+            let audio = small::recording_path(&folder, quality);
             let writer = WavWriter::new(BufWriter::new(File::create(&audio)?), OUTPUT_RATE)?;
             Ok::<_, RecordingError>((folder, audio, state, writer))
         })();
@@ -615,11 +643,13 @@ impl Session {
             folder: folder.clone(),
             microphone,
             computer_audio,
+            quality,
         };
         Ok((
             Session {
                 folder,
                 audio,
+                quality,
                 state,
                 capture,
                 stop,
@@ -630,12 +660,15 @@ impl Session {
     }
 
     /// Stops the capture, closes the file, and moves the recording to Saved.
-    /// If a write failed along the way, the audio up to that point is kept
-    /// and Saved, and the error is returned.
-    pub fn stop(self) -> Result<Saved, RecordingError> {
+    /// Small is encoded to `audio.m4a` first with `encoder`; if that fails
+    /// the audio is kept as `audio.wav` and `state.json` says why. If a write
+    /// failed along the way, the audio up to that point is kept and Saved,
+    /// and the error is returned.
+    pub fn stop(self, encoder: &dyn Encoder) -> Result<Saved, RecordingError> {
         let Session {
             folder,
-            audio,
+            mut audio,
+            quality,
             state,
             capture,
             stop,
@@ -645,7 +678,7 @@ impl Session {
         stop.store(true, Ordering::Release);
         // If the writer thread died, what reached the file is unknown, so
         // Levels::default() makes `inputs` claim the microphone only.
-        let finished = writer.join().unwrap_or_else(|_| Finished {
+        let mut finished = writer.join().unwrap_or_else(|_| Finished {
             progress: Progress {
                 seconds: 0.0,
                 bytes: 0,
@@ -654,15 +687,45 @@ impl Session {
             dropped: 0,
             error: Some(io::Error::other("the writer stopped unexpectedly")),
         });
-        save(&folder, &audio, state, finished, stopped)
+        if quality != Quality::Small {
+            return save(&folder, &audio, state, finished, stopped);
+        }
+        // Small: state.json says Saved before the WAV leaves `.anchovy/`.
+        let levels = finished.levels;
+        let mut written = None;
+        let done = small::finish(&folder, encoder, |done| {
+            let mut next = state.clone();
+            next.encoding_failed = done.failure.clone();
+            let saved = mark_saved(&folder, &next, &levels)
+                .map_err(|err| io::Error::other(err.to_string()))?;
+            written = Some(saved);
+            Ok(())
+        });
+        match done {
+            Ok(done) => {
+                finished.progress.bytes = std::fs::metadata(&done.audio)
+                    .map(|meta| meta.len())
+                    .unwrap_or(finished.progress.bytes);
+                audio = done.audio;
+            }
+            // The WAV stays in `.anchovy/`, and the next launch tries again.
+            Err(err) => finished.error = finished.error.or(Some(err)),
+        }
+        match written {
+            Some(state) => report(&folder, &audio, state, finished, stopped),
+            // Encoding could not start, or state.json could not be written:
+            // try to mark the recording Saved as High would be.
+            None => save(&folder, &audio, state, finished, stopped),
+        }
     }
 }
 
 /// At most one recording at a time, shared by the interface commands. The
 /// computer audio check (`probe`) never overlaps a recording: Record stops a
 /// running check and waits for it, and no check starts while recording.
-#[derive(Default)]
 pub struct Recorder {
+    /// Turns a Small recording into `audio.m4a` when it stops.
+    encoder: Arc<dyn Encoder>,
     session: Mutex<Option<Session>>,
     computer_audio: Mutex<Option<ComputerAudio>>,
     /// Held by a running check, and by `start` until its session exists.
@@ -672,16 +735,27 @@ pub struct Recorder {
 }
 
 impl Recorder {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(encoder: Arc<dyn Encoder>) -> Self {
+        Recorder {
+            encoder,
+            session: Mutex::default(),
+            computer_audio: Mutex::default(),
+            probing: Mutex::default(),
+            stop_probe: AtomicBool::default(),
+        }
     }
 
+    /// Starts a recording with `options`, read from the settings once, now:
+    /// `capture` gets the input device to open, and a change to the settings
+    /// after this does not reach this recording.
+    #[allow(clippy::too_many_arguments)]
     pub fn start(
         &self,
         notes_dir: &Path,
         start: StartTime,
         source: Source,
-        capture: impl FnOnce() -> Result<Started, RecordingError>,
+        options: RecordingOptions,
+        capture: impl FnOnce(Option<&str>) -> Result<Started, RecordingError>,
         tick: Duration,
         on_progress: impl Fn(Progress) + Send + 'static,
     ) -> Result<Recording, RecordingError> {
@@ -692,8 +766,15 @@ impl Recorder {
         if session.is_some() {
             return Err(RecordingError::AlreadyRecording);
         }
-        let (started, recording) =
-            Session::start(notes_dir, start, source, capture()?, tick, on_progress)?;
+        let (started, recording) = Session::start(
+            notes_dir,
+            start,
+            source,
+            options.quality,
+            capture(options.input_device.as_deref())?,
+            tick,
+            on_progress,
+        )?;
         *self.computer_audio.lock().unwrap() = Some(recording.computer_audio);
         *session = Some(started);
         Ok(recording)
@@ -706,7 +787,7 @@ impl Recorder {
             .unwrap()
             .take()
             .ok_or(RecordingError::NotRecording)?;
-        session.stop()
+        session.stop(self.encoder.as_ref())
     }
 
     pub fn is_recording(&self) -> bool {
@@ -785,6 +866,8 @@ mod tests {
     use crate::notes::state::read_state;
     use crate::notes::test_dir::TestDir;
     use crate::recording::mixer::signal::{sine, tone_amplitude};
+    use crate::recording::small::fake::CopyEncoder;
+    use crate::settings::{read_settings, Settings, SettingsStore};
     use std::io::Cursor;
     use std::sync::mpsc;
 
@@ -1000,6 +1083,296 @@ mod tests {
 
     const TICK: Duration = Duration::from_millis(50);
 
+    /// High quality on the system default input.
+    fn high() -> RecordingOptions {
+        RecordingOptions {
+            input_device: None,
+            quality: Quality::High,
+        }
+    }
+
+    #[test]
+    fn a_device_chosen_during_a_recording_is_used_from_the_next_one() {
+        let dir = TestDir::new();
+        let support = TestDir::new();
+        let settings = SettingsStore::load(support.path().to_path_buf());
+        let usb = Settings {
+            input_device: Some("AppleUSBAudioEngine:DJI".into()),
+            ..Settings::default()
+        };
+        settings.update(usb).unwrap();
+        let recorder = Recorder::new(Arc::new(CopyEncoder::default()));
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let capture = |asked: Arc<Mutex<Vec<Option<String>>>>| {
+            move |device: Option<&str>| {
+                asked.lock().unwrap().push(device.map(str::to_owned));
+                Ok(fake_capture(false, Arc::new(AtomicBool::new(false))))
+            }
+        };
+
+        recorder
+            .start(
+                dir.path(),
+                START,
+                Source::Manual,
+                settings.recording_options(),
+                capture(asked.clone()),
+                TICK,
+                |_| {},
+            )
+            .unwrap();
+        settings
+            .update(Settings {
+                input_device: Some("BuiltInMicrophoneDevice".into()),
+                ..Settings::default()
+            })
+            .unwrap();
+        // The recording in progress keeps its device.
+        assert_eq!(
+            *asked.lock().unwrap(),
+            [Some("AppleUSBAudioEngine:DJI".to_string())]
+        );
+        recorder.stop().unwrap();
+
+        recorder
+            .start(
+                dir.path(),
+                START,
+                Source::Manual,
+                settings.recording_options(),
+                capture(asked.clone()),
+                TICK,
+                |_| {},
+            )
+            .unwrap();
+        recorder.stop().unwrap();
+        assert_eq!(
+            *asked.lock().unwrap(),
+            [
+                Some("AppleUSBAudioEngine:DJI".to_string()),
+                Some("BuiltInMicrophoneDevice".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn a_quality_chosen_during_a_recording_is_used_from_the_next_one() {
+        let dir = TestDir::new();
+        let support = TestDir::new();
+        let settings = SettingsStore::load(support.path().to_path_buf());
+        let recorder = Recorder::new(Arc::new(CopyEncoder::default()));
+        let start = |recorder: &Recorder, minute| {
+            recorder
+                .start(
+                    dir.path(),
+                    StartTime { minute, ..START },
+                    Source::Manual,
+                    settings.recording_options(),
+                    |_| Ok(fake_capture(true, Arc::new(AtomicBool::new(false)))),
+                    TICK,
+                    |_| {},
+                )
+                .unwrap()
+        };
+
+        let first = start(&recorder, 10);
+        assert_eq!(first.quality, Quality::High);
+        settings
+            .update(Settings {
+                recording_quality: Quality::Small,
+                ..Settings::default()
+            })
+            .unwrap();
+        thread::sleep(Duration::from_millis(100));
+        let saved = recorder.stop().unwrap();
+        // The recording in progress stays High.
+        assert_eq!(saved.audio, first.folder.join("audio.wav"));
+        assert!(!first.folder.join("audio.m4a").exists());
+
+        let second = start(&recorder, 11);
+        assert_eq!(second.quality, Quality::Small);
+        // While it runs, the WAV is hidden in .anchovy/, and the size is what
+        // is on disk.
+        assert!(!second.folder.join("audio.wav").exists());
+        assert!(second.folder.join(".anchovy/recording.wav").is_file());
+        thread::sleep(Duration::from_millis(100));
+        let saved = recorder.stop().unwrap();
+        assert_eq!(saved.audio, second.folder.join("audio.m4a"));
+        assert_eq!(
+            saved.bytes,
+            std::fs::metadata(&saved.audio).unwrap().len(),
+            "the size of the M4A"
+        );
+        assert!(!second.folder.join(".anchovy/recording.wav").exists());
+        let state = read_state(&second.folder).unwrap();
+        assert_eq!(state.status, Status::Saved);
+        assert_eq!(state.encoding_failed, None);
+    }
+
+    /// A folder where `state.tmp` should be, so the next `write_state` in
+    /// this recording fails.
+    fn block_state_writes(folder: &Path) {
+        std::fs::create_dir(folder.join(".anchovy/state.tmp")).unwrap();
+    }
+
+    fn unblock_state_writes(folder: &Path) {
+        std::fs::remove_dir(folder.join(".anchovy/state.tmp")).unwrap();
+    }
+
+    #[test]
+    fn a_small_recording_whose_state_cannot_be_saved_keeps_its_wav_for_the_next_launch() {
+        for encoder in [
+            CopyEncoder::default(),
+            CopyEncoder {
+                fail: Some("No AAC encoder.".into()),
+                ..CopyEncoder::default()
+            },
+        ] {
+            let dir = TestDir::new();
+            let recorder = Recorder::new(Arc::new(encoder));
+            let small = RecordingOptions {
+                input_device: None,
+                quality: Quality::Small,
+            };
+            let recording = recorder
+                .start(
+                    dir.path(),
+                    START,
+                    Source::Manual,
+                    small,
+                    |_| Ok(fake_capture(true, Arc::new(AtomicBool::new(false)))),
+                    TICK,
+                    |_| {},
+                )
+                .unwrap();
+            thread::sleep(Duration::from_millis(100));
+            block_state_writes(&recording.folder);
+
+            assert!(matches!(recorder.stop(), Err(RecordingError::Disk(_))));
+
+            // state.json still says Recording, so the WAV must still be where
+            // the next launch looks for it.
+            assert_eq!(
+                read_state(&recording.folder).unwrap().status,
+                Status::Recording
+            );
+            assert!(recording.folder.join(".anchovy/recording.wav").is_file());
+
+            unblock_state_writes(&recording.folder);
+            let encoder = CopyEncoder::default();
+            small::recover(&recording.folder, &encoder)
+                .unwrap()
+                .unwrap();
+            assert_eq!(read_state(&recording.folder).unwrap().status, Status::Saved);
+            assert!(recording.folder.join("audio.m4a").is_file());
+            assert!(!recording.folder.join(".anchovy/recording.wav").exists());
+        }
+    }
+
+    #[test]
+    fn a_small_recording_whose_encode_fails_is_saved_as_wav_with_the_reason() {
+        let dir = TestDir::new();
+        let recorder = Recorder::new(Arc::new(CopyEncoder {
+            fail: Some("No AAC encoder.".into()),
+            ..CopyEncoder::default()
+        }));
+        let small = RecordingOptions {
+            input_device: None,
+            quality: Quality::Small,
+        };
+        let recording = recorder
+            .start(
+                dir.path(),
+                START,
+                Source::Manual,
+                small,
+                |_| Ok(fake_capture(true, Arc::new(AtomicBool::new(false)))),
+                TICK,
+                |_| {},
+            )
+            .unwrap();
+        thread::sleep(Duration::from_millis(100));
+
+        let saved = recorder.stop().unwrap();
+
+        assert_eq!(saved.audio, recording.folder.join("audio.wav"));
+        assert!(saved.seconds > 0.0);
+        let state = read_state(&recording.folder).unwrap();
+        assert_eq!(state.status, Status::Saved);
+        assert_eq!(
+            state.encoding_failed.as_deref(),
+            Some("Anchovy couldn't save this recording as M4A, so it kept it as WAV. No AAC encoder.")
+        );
+    }
+
+    #[test]
+    fn progress_while_recording_small_is_the_size_of_the_file_on_disk() {
+        let dir = TestDir::new();
+        let (tx, rx) = mpsc::channel();
+        let (session, recording) = Session::start(
+            dir.path(),
+            START,
+            Source::Manual,
+            Quality::Small,
+            fake_capture(true, Arc::new(AtomicBool::new(false))),
+            TICK,
+            move |progress| tx.send(progress).unwrap(),
+        )
+        .unwrap();
+
+        let mut progress = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        while progress.bytes <= 44 {
+            progress = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        }
+        let on_disk = std::fs::metadata(recording.folder.join(".anchovy/recording.wav"))
+            .unwrap()
+            .len();
+        assert!(on_disk >= progress.bytes, "{on_disk} < {}", progress.bytes);
+        session.stop(&CopyEncoder::default()).unwrap();
+    }
+
+    #[test]
+    fn a_saved_device_that_is_not_connected_records_with_the_default_and_stays_saved() {
+        let dir = TestDir::new();
+        let support = TestDir::new();
+        let settings = SettingsStore::load(support.path().to_path_buf());
+        let unplugged = Settings {
+            input_device: Some("AppleUSBAudioEngine:DJI".into()),
+            ..Settings::default()
+        };
+        settings.update(unplugged.clone()).unwrap();
+        let connected = [
+            device("BuiltInMicrophoneDevice", "MacBook Air Microphone"),
+            device("ZoomAudioDevice", "Zoom Audio"),
+        ];
+        let recorder = Recorder::new(Arc::new(CopyEncoder::default()));
+
+        let recording = recorder
+            .start(
+                dir.path(),
+                START,
+                Source::Manual,
+                settings.recording_options(),
+                // As mac::start picks the microphone.
+                |wanted| {
+                    let mic = pick_microphone(&connected, wanted, Some("BuiltInMicrophoneDevice"))
+                        .ok_or(RecordingError::NoMicrophone)?;
+                    Ok(Started {
+                        microphone: mic.name.clone(),
+                        ..fake_capture(false, Arc::new(AtomicBool::new(false)))
+                    })
+                },
+                TICK,
+                |_| {},
+            )
+            .unwrap();
+        recorder.stop().unwrap();
+
+        assert_eq!(recording.microphone, "MacBook Air Microphone");
+        assert_eq!(settings.get(), unplugged);
+        assert_eq!(read_settings(support.path()), unplugged);
+    }
+
     #[test]
     fn a_recording_from_the_meeting_prompt_keeps_its_source() {
         let dir = TestDir::new();
@@ -1007,6 +1380,7 @@ mod tests {
             dir.path(),
             START,
             Source::Meeting,
+            Quality::High,
             fake_capture(true, Arc::new(AtomicBool::new(false))),
             TICK,
             |_| {},
@@ -1017,7 +1391,7 @@ mod tests {
             Source::Meeting
         );
 
-        let saved = session.stop().unwrap();
+        let saved = session.stop(&CopyEncoder::default()).unwrap();
         let state = read_state(&saved.folder).unwrap();
         assert_eq!(state.status, Status::Saved);
         assert_eq!(state.source, Source::Meeting);
@@ -1032,6 +1406,7 @@ mod tests {
             dir.path(),
             START,
             Source::Manual,
+            Quality::High,
             fake_capture(true, stopped.clone()),
             TICK,
             move |progress| tx.send(progress).unwrap(),
@@ -1052,7 +1427,7 @@ mod tests {
         }
         assert!(last.seconds > first.seconds);
 
-        let saved = session.stop().unwrap();
+        let saved = session.stop(&CopyEncoder::default()).unwrap();
         assert!(stopped.load(Ordering::Acquire), "capture stopped");
         assert_eq!(saved.audio, recording.folder.join("audio.wav"));
         assert_eq!(read_state(&saved.folder).unwrap().status, Status::Saved);
@@ -1077,6 +1452,7 @@ mod tests {
             dir.path(),
             START,
             Source::Manual,
+            Quality::High,
             fake_capture(false, stopped),
             TICK,
             |_| {},
@@ -1085,7 +1461,7 @@ mod tests {
         assert_eq!(recording.computer_audio, ComputerAudio::NotAllowed);
         thread::sleep(Duration::from_millis(100));
 
-        let saved = session.stop().unwrap();
+        let saved = session.stop(&CopyEncoder::default()).unwrap();
 
         assert_eq!(saved.inputs, vec![Input::Microphone]);
         assert_eq!(saved.levels.computer, None);
@@ -1106,6 +1482,7 @@ mod tests {
             dir.path(),
             START,
             Source::Manual,
+            Quality::High,
             fake_capture_with(true, 0.0, stopped),
             TICK,
             |_| {},
@@ -1114,7 +1491,7 @@ mod tests {
         assert_eq!(recording.computer_audio, ComputerAudio::Recording);
         thread::sleep(Duration::from_millis(100));
 
-        let saved = session.stop().unwrap();
+        let saved = session.stop(&CopyEncoder::default()).unwrap();
 
         assert_eq!(saved.inputs, vec![Input::Microphone]);
         let state = read_state(&saved.folder).unwrap();
@@ -1187,6 +1564,7 @@ mod tests {
             &missing,
             START,
             Source::Manual,
+            Quality::High,
             fake_capture(true, stopped.clone()),
             TICK,
             |_| {},
@@ -1198,7 +1576,7 @@ mod tests {
     #[test]
     fn record_stops_a_running_computer_audio_check_and_waits_for_it() {
         let dir = TestDir::new();
-        let recorder = Arc::new(Recorder::new());
+        let recorder = Arc::new(Recorder::new(Arc::new(CopyEncoder::default())));
         let probing = Arc::new(AtomicBool::new(false));
         let (started_tx, started_rx) = mpsc::channel();
         let probe = {
@@ -1224,7 +1602,8 @@ mod tests {
                 dir.path(),
                 START,
                 Source::Manual,
-                || {
+                high(),
+                |_| {
                     // The check's tap and device are gone before the
                     // recording's are made.
                     assert!(!probing.load(Ordering::SeqCst));
@@ -1248,13 +1627,14 @@ mod tests {
     #[test]
     fn no_computer_audio_check_runs_while_recording() {
         let dir = TestDir::new();
-        let recorder = Recorder::new();
+        let recorder = Recorder::new(Arc::new(CopyEncoder::default()));
         recorder
             .start(
                 dir.path(),
                 START,
                 Source::Manual,
-                || Ok(fake_capture(true, Arc::new(AtomicBool::new(false)))),
+                high(),
+                |_| Ok(fake_capture(true, Arc::new(AtomicBool::new(false)))),
                 TICK,
                 |_| {},
             )
@@ -1268,14 +1648,14 @@ mod tests {
 
     #[test]
     fn a_check_that_runs_to_the_end_gives_its_answer() {
-        let recorder = Recorder::new();
+        let recorder = Recorder::new(Arc::new(CopyEncoder::default()));
         assert_eq!(recorder.probe(|keep_going| keep_going()), Some(true));
     }
 
     #[test]
     fn the_recorder_runs_one_recording_at_a_time() {
         let dir = TestDir::new();
-        let recorder = Recorder::new();
+        let recorder = Recorder::new(Arc::new(CopyEncoder::default()));
         assert_eq!(recorder.last_computer_audio(), None);
         assert_eq!(recorder.stop().unwrap_err(), RecordingError::NotRecording);
 
@@ -1285,7 +1665,8 @@ mod tests {
                 dir.path(),
                 START,
                 Source::Manual,
-                || Ok(fake_capture(false, flag())),
+                high(),
+                |_| Ok(fake_capture(false, flag())),
                 TICK,
                 |_| {},
             )
@@ -1295,7 +1676,8 @@ mod tests {
             dir.path(),
             START,
             Source::Manual,
-            || panic!("must not start a second capture"),
+            high(),
+            |_| panic!("must not start a second capture"),
             TICK,
             |_| {},
         );
@@ -1312,12 +1694,13 @@ mod tests {
     #[test]
     fn a_capture_that_fails_to_start_leaves_no_folder() {
         let dir = TestDir::new();
-        let recorder = Recorder::new();
+        let recorder = Recorder::new(Arc::new(CopyEncoder::default()));
         let result = recorder.start(
             dir.path(),
             START,
             Source::Manual,
-            || Err(RecordingError::NoMicrophone),
+            high(),
+            |_| Err(RecordingError::NoMicrophone),
             TICK,
             |_| {},
         );

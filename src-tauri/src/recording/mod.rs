@@ -2,14 +2,16 @@
 //! 48 kHz mono file in the recording's folder.
 //!
 //! `core` holds the logic and is tested without audio hardware; `mixer` and
-//! `file_writer` turn samples into the file; `mac` is the thin Core Audio
-//! layer; `commands` connects it to the interface.
+//! `file_writer` turn samples into the file; `small` turns it into an M4A for
+//! Small quality; `mac` is the thin Core Audio layer; `commands` connects it
+//! to the interface.
 
 pub mod commands;
 pub mod core;
 pub mod file_writer;
 pub mod mac;
 pub mod mixer;
+pub mod small;
 
 #[cfg(test)]
 mod tests {
