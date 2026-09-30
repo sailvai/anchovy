@@ -2,9 +2,10 @@
 //!
 //! The summary model must answer with one JSON object and nothing else:
 //! `{"summary": "...", "decisions": [...], "action_items": [...]}`, written
-//! in the language of the meeting. An answer that is not exactly that is
-//! asked for once more; a second bad answer is an error, and no note is
-//! written.
+//! in the language of the meeting. In a meeting that switches languages,
+//! each decision and action item stays in the language it was said in. An
+//! answer that is not exactly that is asked for once more; a second bad
+//! answer is an error, and no note is written.
 //!
 //! A transcript longer than one chunk is summarized chunk by chunk, and the
 //! partial answers are merged by the same model.
@@ -282,12 +283,24 @@ pub fn parse(answer: &str, expected: Option<Script>) -> Result<Summary, String> 
 
 const SHAPE: &str = r#"{"summary": "...", "decisions": ["..."], "action_items": ["..."]}"#;
 
-fn write_in(language: Option<&str>) -> String {
+/// The language to write in. The transcription model reports one language
+/// even when a meeting switches, so a mixed meeting keeps each item in the
+/// language it was said in rather than translating it.
+fn write_in(language: Option<&str>, mixed: bool) -> String {
+    let names = "Keep names and terms as they were said.";
+    if mixed {
+        let language = language.unwrap_or("the main language of the meeting");
+        return format!(
+            "The meeting uses more than one language. Write the summary in {language}. \
+             Write each decision and action item in the language it was said in. Do not \
+             translate it. {names}"
+        );
+    }
     let language = match language {
         Some(language) => format!("{language}, the language spoken in the meeting"),
         None => "the language spoken in the meeting".into(),
     };
-    format!("Write every value in {language}. Keep names and terms as they were said.")
+    format!("Write every value in {language}. {names}")
 }
 
 /// Whether a transcript uses two scripts that each make up a real part of
@@ -320,15 +333,22 @@ pub fn chunk_prompt(
         "You write meeting notes from a transcript. Answer with only one JSON object and \
          nothing before or after it, in this shape:\n{SHAPE}\n\
          - \"summary\": two to five sentences on what the meeting covered.\n\
-         - \"decisions\": every choice the meeting settled, one per item: plans agreed, \
-         dates set, things approved, and things put off. Use [] if nothing was decided.\n\
-         - \"action_items\": tasks someone will do, one per item, with who and by when if \
-         the transcript says. Use [] if there are none. A task is not also a decision.\n\
-         Write each decision and action item as one short sentence, in the words used in the \
-         meeting. Use only what the transcript says. Do not add names, dates, reasons, or \
-         details that were not said. The transcript comes from speech recognition and may \
-         have small errors.\n{}",
-        write_in(language)
+         - \"decisions\": what the meeting agreed on, one per item: plans agreed, dates \
+         set, things approved, and things put off. Use [] if nothing was decided.\n\
+         - \"action_items\": tasks a person took on, one per item. Use [] if there are \
+         none. A task is not also a decision.\n\
+         A suggestion, a proposal, an opinion, or a question is not a decision unless the \
+         meeting agreed to it, and not an action item unless someone took it on. A possible \
+         follow-up nobody mentioned is not an action item.\n\
+         Write each decision and action item as one short sentence in the words used in the \
+         meeting. Shorten, but do not rephrase or translate. Keep the owner and the date when \
+         they were said. If the owner was not said, leave the owner out. Never write \
+         \"someone\" or any other placeholder. The transcript has no speaker names, so do not \
+         guess who \"I\" is.\n\
+         Use only what the transcript says. Do not add names, dates, reasons, or details that \
+         were not said. The transcript comes from speech recognition and may have small \
+         errors.\n{}",
+        write_in(language, mixed)
     );
     let user = match part {
         None => format!("Transcript:\n{transcript}"),
@@ -347,10 +367,12 @@ pub fn merge_prompt(language: Option<&str>, mixed: bool, parts: &[Summary]) -> P
          meeting. Each part is a JSON object. Answer with only one JSON object and nothing \
          before or after it, in this shape:\n{SHAPE}\n\
          - \"summary\": two to five sentences on the whole meeting.\n\
-         - \"decisions\": every decision from the parts, once each.\n\
-         - \"action_items\": every action item from the parts, once each.\n\
-         Keep the wording of the parts. Do not add anything the parts do not say.\n{}",
-        write_in(language)
+         - \"decisions\": every decision from the parts.\n\
+         - \"action_items\": every action item from the parts.\n\
+         Copy each decision and action item exactly as a part wrote it, in the language it is \
+         written in. Do not rewrite, combine, translate, or add items. Remove an item only \
+         when it repeats another item with the same meaning.\n{}",
+        write_in(language, mixed)
     );
     let parts: Vec<String> = parts
         .iter()
