@@ -170,3 +170,11 @@ export function Spinner({ className = "" }: { className?: string }) {
     </svg>
   );
 }
+
+export function ChevronDownIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="m4.5 6.25 3.5 3.5 3.5-3.5" />
+    </Svg>
+  );
+}

@@ -21,12 +21,14 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use anchovy_lib::notes::folder::Quality;
 use anchovy_lib::notes::note::Source;
 use anchovy_lib::notes::state::{read_state, Input, Status};
 use anchovy_lib::recording::core::{Progress, Recorder};
 use anchovy_lib::recording::file_writer::WavWriter;
 use anchovy_lib::recording::mac;
 use anchovy_lib::recording::mixer::OUTPUT_RATE;
+use anchovy_lib::settings::RecordingOptions;
 use serde_json::json;
 
 const TONE_AMPLITUDE: f32 = 0.5;
@@ -115,7 +117,11 @@ fn record(args: &[String]) -> Result<bool, String> {
                 &out,
                 mac::local_now(),
                 Source::Manual,
-                || mac::start(None),
+                RecordingOptions {
+                    input_device: None,
+                    quality: Quality::High,
+                },
+                mac::start,
                 Duration::from_secs(1),
                 move |p| events.lock().unwrap().push(p),
             )

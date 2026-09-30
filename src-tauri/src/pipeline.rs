@@ -1511,6 +1511,29 @@ We planned the launch.
     }
 
     #[test]
+    fn a_note_being_written_finishes_in_its_folder_after_the_notes_folder_changes() {
+        let s = setup(&[VALID]);
+        let old_notes = s.folder.parent().unwrap().to_path_buf();
+        let library = crate::library::Library::new(old_notes);
+        let new_notes = TestDir::new();
+        let release = Arc::new(Mutex::new(()));
+        let held = release.lock().unwrap();
+        let wait = release.clone();
+        *s.engines.during.lock().unwrap() = Some(Box::new(move || drop(wait.lock().unwrap())));
+
+        s.pipeline.generate(&s.folder, false).unwrap();
+        // Settings: Change… while the note is being transcribed.
+        library.set_notes_dir(new_notes.path().to_path_buf());
+        drop(held);
+        s.pipeline.wait_idle();
+
+        assert_eq!(status(&s.folder), Status::Ready);
+        assert!(note(&s.folder).is_some());
+        assert_eq!(fs::read_dir(new_notes.path()).unwrap().count(), 0);
+        assert!(library.list().unwrap().is_empty());
+    }
+
+    #[test]
     fn a_recording_still_recording_cannot_get_a_note() {
         let s = setup(&[VALID]);
         write_state(&s.folder, &State::new()).unwrap();

@@ -13,6 +13,7 @@ import { Sidebar, type Place } from "../features/library/Sidebar";
 import { MeetingBanner } from "../features/meetings/MeetingBanner";
 import type { ComputerAudioRow } from "../features/library/Sources";
 import { ModelsScreen } from "../features/models/ModelsScreen";
+import { SettingsScreen } from "../features/settings/SettingsScreen";
 import { Onboarding } from "../features/setup/Onboarding";
 import {
   answerMeetingPrompt,
@@ -45,6 +46,7 @@ import {
   checkComputerAudio,
   openPrivacySettings,
   setupStatus,
+  type NotesFolder,
   type SetupStatus,
 } from "../ipc/setup";
 
@@ -293,6 +295,14 @@ export function App() {
     }
   }
 
+  // Change… in Settings: the library lists the new folder, and nothing in the
+  // old one stays selected. Settings stays open.
+  function notesFolderChanged(folder: NotesFolder) {
+    setSetup((current) => current && { ...current, notes_folder: folder });
+    setView({ kind: "place", place: "settings" });
+    void refresh();
+  }
+
   async function allowComputerAudio() {
     if (computerAudio === "not_asked") {
       setComputerAudio("checking");
@@ -349,6 +359,21 @@ export function App() {
   let pane;
   if (place === "models") {
     pane = <ModelsScreen />;
+  } else if (place === "settings") {
+    pane = (
+      <SettingsScreen
+        notesFolder={setup.notes_folder}
+        recording={live !== null}
+        onNotesFolderChanged={notesFolderChanged}
+        // The home pane names the microphone Record will use.
+        onSaved={() =>
+          void recordingSources().then(
+            (sources) => setMicrophone(sources.microphone),
+            () => {},
+          )
+        }
+      />
+    );
   } else if (showLive) {
     pane = (
       <RecordingPane

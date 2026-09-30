@@ -137,7 +137,7 @@ fn answer(app: &AppHandle, id: u64, answer: Answer) -> Result<Option<Recording>,
             mac::remove(id);
             let _ = app.emit(PROMPT_EVENT, None::<Prompt>);
         },
-        || recording_commands::start(app, Source::Meeting, None),
+        || recording_commands::start(app, Source::Meeting),
     )
 }
 

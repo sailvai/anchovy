@@ -2,6 +2,7 @@
 //! and the folder panels in `mac`.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use objc2::MainThreadMarker;
 use tauri::{AppHandle, State};
@@ -9,6 +10,7 @@ use tauri::{AppHandle, State};
 use super::mac::{self, MacBookmarks};
 use super::{default_folder, describe, FolderAccess, NotesFolder};
 use crate::library::Library;
+use crate::recording::core::Recorder;
 
 pub type NotesAccess = FolderAccess<MacBookmarks>;
 
@@ -44,14 +46,20 @@ fn use_folder(
     Ok(describe(&folder, home))
 }
 
-/// "Choose Folder…": any folder, including an existing Obsidian vault.
-/// `None` if the user cancels.
+/// "Choose Folder…" on first launch and Change… in Settings: any folder,
+/// including an existing Obsidian vault. `None` if the user cancels. Not
+/// while recording: the recording is written into the notes folder. A note
+/// being written finishes in the folder it started in.
 #[tauri::command]
 pub async fn choose_notes_folder(
     app: AppHandle,
     access: State<'_, NotesAccess>,
     library: State<'_, Library>,
+    recorder: State<'_, Arc<Recorder>>,
 ) -> Result<Option<NotesFolder>, String> {
+    if recorder.is_recording() {
+        return Err("Stop recording before changing the notes folder.".into());
+    }
     let home = home()?;
     let start = library
         .notes_dir()

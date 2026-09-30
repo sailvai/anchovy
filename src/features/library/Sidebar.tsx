@@ -66,8 +66,12 @@ export function Sidebar({
           active={place === "models"}
           onClick={() => onPlace("models")}
         />
-        {/* Settings arrive in plan step 8. */}
-        <NavItem icon={<SettingsIcon />} label="Settings" active={place === "settings"} />
+        <NavItem
+          icon={<SettingsIcon />}
+          label="Settings"
+          active={place === "settings"}
+          onClick={() => onPlace("settings")}
+        />
       </div>
     </aside>
   );

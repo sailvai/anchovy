@@ -21,6 +21,7 @@ use super::mixer::{Mixer, OUTPUT_RATE};
 use crate::notes::folder::{create_recording_folder, Quality, StartTime};
 use crate::notes::note::Source;
 use crate::notes::state::{write_state, Input, State, Status};
+use crate::settings::RecordingOptions;
 
 /// Core Audio objects Anchovy creates (the private aggregate device) have UIDs
 /// starting with this, so they never show up as an input device to choose.
@@ -676,12 +677,17 @@ impl Recorder {
         Self::default()
     }
 
+    /// Starts a recording with `options`, read from the settings once, now:
+    /// `capture` gets the input device to open, and a change to the settings
+    /// after this does not reach this recording.
+    #[allow(clippy::too_many_arguments)]
     pub fn start(
         &self,
         notes_dir: &Path,
         start: StartTime,
         source: Source,
-        capture: impl FnOnce() -> Result<Started, RecordingError>,
+        options: RecordingOptions,
+        capture: impl FnOnce(Option<&str>) -> Result<Started, RecordingError>,
         tick: Duration,
         on_progress: impl Fn(Progress) + Send + 'static,
     ) -> Result<Recording, RecordingError> {
@@ -692,8 +698,14 @@ impl Recorder {
         if session.is_some() {
             return Err(RecordingError::AlreadyRecording);
         }
-        let (started, recording) =
-            Session::start(notes_dir, start, source, capture()?, tick, on_progress)?;
+        let (started, recording) = Session::start(
+            notes_dir,
+            start,
+            source,
+            capture(options.input_device.as_deref())?,
+            tick,
+            on_progress,
+        )?;
         *self.computer_audio.lock().unwrap() = Some(recording.computer_audio);
         *session = Some(started);
         Ok(recording)
@@ -785,6 +797,7 @@ mod tests {
     use crate::notes::state::read_state;
     use crate::notes::test_dir::TestDir;
     use crate::recording::mixer::signal::{sine, tone_amplitude};
+    use crate::settings::{read_settings, Settings, SettingsStore};
     use std::io::Cursor;
     use std::sync::mpsc;
 
@@ -999,6 +1012,120 @@ mod tests {
     }
 
     const TICK: Duration = Duration::from_millis(50);
+
+    /// High quality on the system default input.
+    fn high() -> RecordingOptions {
+        RecordingOptions {
+            input_device: None,
+            quality: Quality::High,
+        }
+    }
+
+    #[test]
+    fn a_device_chosen_during_a_recording_is_used_from_the_next_one() {
+        let dir = TestDir::new();
+        let support = TestDir::new();
+        let settings = SettingsStore::load(support.path().to_path_buf());
+        let usb = Settings {
+            input_device: Some("AppleUSBAudioEngine:DJI".into()),
+            ..Settings::default()
+        };
+        settings.update(usb).unwrap();
+        let recorder = Recorder::new();
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let capture = |asked: Arc<Mutex<Vec<Option<String>>>>| {
+            move |device: Option<&str>| {
+                asked.lock().unwrap().push(device.map(str::to_owned));
+                Ok(fake_capture(false, Arc::new(AtomicBool::new(false))))
+            }
+        };
+
+        recorder
+            .start(
+                dir.path(),
+                START,
+                Source::Manual,
+                settings.recording_options(),
+                capture(asked.clone()),
+                TICK,
+                |_| {},
+            )
+            .unwrap();
+        settings
+            .update(Settings {
+                input_device: Some("BuiltInMicrophoneDevice".into()),
+                ..Settings::default()
+            })
+            .unwrap();
+        // The recording in progress keeps its device.
+        assert_eq!(
+            *asked.lock().unwrap(),
+            [Some("AppleUSBAudioEngine:DJI".to_string())]
+        );
+        recorder.stop().unwrap();
+
+        recorder
+            .start(
+                dir.path(),
+                START,
+                Source::Manual,
+                settings.recording_options(),
+                capture(asked.clone()),
+                TICK,
+                |_| {},
+            )
+            .unwrap();
+        recorder.stop().unwrap();
+        assert_eq!(
+            *asked.lock().unwrap(),
+            [
+                Some("AppleUSBAudioEngine:DJI".to_string()),
+                Some("BuiltInMicrophoneDevice".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn a_saved_device_that_is_not_connected_records_with_the_default_and_stays_saved() {
+        let dir = TestDir::new();
+        let support = TestDir::new();
+        let settings = SettingsStore::load(support.path().to_path_buf());
+        let unplugged = Settings {
+            input_device: Some("AppleUSBAudioEngine:DJI".into()),
+            ..Settings::default()
+        };
+        settings.update(unplugged.clone()).unwrap();
+        let connected = [
+            device("BuiltInMicrophoneDevice", "MacBook Air Microphone"),
+            device("ZoomAudioDevice", "Zoom Audio"),
+        ];
+        let recorder = Recorder::new();
+
+        let recording = recorder
+            .start(
+                dir.path(),
+                START,
+                Source::Manual,
+                settings.recording_options(),
+                // As mac::start picks the microphone.
+                |wanted| {
+                    let mic = pick_microphone(&connected, wanted, Some("BuiltInMicrophoneDevice"))
+                        .ok_or(RecordingError::NoMicrophone)?;
+                    Ok(Started {
+                        microphone: mic.name.clone(),
+                        ..fake_capture(false, Arc::new(AtomicBool::new(false)))
+                    })
+                },
+                TICK,
+                |_| {},
+            )
+            .unwrap();
+        recorder.stop().unwrap();
+
+        assert_eq!(recording.microphone, "MacBook Air Microphone");
+        assert_eq!(settings.get(), unplugged);
+        assert_eq!(read_settings(support.path()), unplugged);
+    }
 
     #[test]
     fn a_recording_from_the_meeting_prompt_keeps_its_source() {
@@ -1224,7 +1351,8 @@ mod tests {
                 dir.path(),
                 START,
                 Source::Manual,
-                || {
+                high(),
+                |_| {
                     // The check's tap and device are gone before the
                     // recording's are made.
                     assert!(!probing.load(Ordering::SeqCst));
@@ -1254,7 +1382,8 @@ mod tests {
                 dir.path(),
                 START,
                 Source::Manual,
-                || Ok(fake_capture(true, Arc::new(AtomicBool::new(false)))),
+                high(),
+                |_| Ok(fake_capture(true, Arc::new(AtomicBool::new(false)))),
                 TICK,
                 |_| {},
             )
@@ -1285,7 +1414,8 @@ mod tests {
                 dir.path(),
                 START,
                 Source::Manual,
-                || Ok(fake_capture(false, flag())),
+                high(),
+                |_| Ok(fake_capture(false, flag())),
                 TICK,
                 |_| {},
             )
@@ -1295,7 +1425,8 @@ mod tests {
             dir.path(),
             START,
             Source::Manual,
-            || panic!("must not start a second capture"),
+            high(),
+            |_| panic!("must not start a second capture"),
             TICK,
             |_| {},
         );
@@ -1317,7 +1448,8 @@ mod tests {
             dir.path(),
             START,
             Source::Manual,
-            || Err(RecordingError::NoMicrophone),
+            high(),
+            |_| Err(RecordingError::NoMicrophone),
             TICK,
             |_| {},
         );

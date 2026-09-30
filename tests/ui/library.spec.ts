@@ -194,6 +194,27 @@ for (const colorScheme of ["light", "dark"] as const) {
     await snap(page, `note-menu-${colorScheme}.png`);
   });
 
+  // The mock's Settings screen: the defaults, on a MacBook Pro.
+  test(`settings, ${colorScheme}`, async ({ page }) => {
+    await open(page, colorScheme, recordings, {
+      list_input_devices: [
+        { uid: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone", is_default: true },
+      ],
+      get_settings: {
+        input_device: null,
+        recording_quality: "high",
+        generate_notes_automatically: true,
+      },
+    });
+    await page.getByRole("button", { name: "Settings" }).click();
+    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Input device" })).toHaveText(
+      "MacBook Pro Microphone",
+    );
+    await expect(page.getByRole("switch", { name: "Generate notes automatically" })).toBeEnabled();
+    await snap(page, `settings-${colorScheme}.png`);
+  });
+
   // The mock's meeting-banner screen: Zoom has started while the Ready note
   // is open.
   test(`meeting prompt, ${colorScheme}`, async ({ page }) => {
