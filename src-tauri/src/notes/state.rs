@@ -46,6 +46,7 @@ impl Status {
         matches!(
             (self, next),
             (Recording, Saved)
+                | (Recording, Failed { .. })
                 | (Saved, NeedsModels)
                 | (Saved, Working)
                 | (NeedsModels, Working)
@@ -168,6 +169,7 @@ mod tests {
     fn allowed_transitions_follow_the_plan() {
         let allowed = [
             (Status::Recording, Status::Saved),
+            (Status::Recording, failed()),
             (Status::Saved, Status::NeedsModels),
             (Status::Saved, Status::Working),
             (Status::NeedsModels, Status::Working),

@@ -16,12 +16,13 @@ use std::time::{Duration, Instant};
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde::Serialize;
 
-use super::file_writer::WavWriter;
+use super::file_writer::{repair_header, WavWriter};
 use super::mixer::{Mixer, OUTPUT_RATE};
 use super::small::{self, Encoder};
 use crate::notes::folder::{create_recording_folder, Quality, StartTime};
 use crate::notes::note::Source;
-use crate::notes::state::{write_state, Input, State, Status};
+use crate::notes::state::{read_state, write_state, Input, State, Status};
+use crate::notes::NotesError;
 use crate::settings::RecordingOptions;
 
 /// Core Audio objects Anchovy creates (the private aggregate device) have UIDs
@@ -812,6 +813,65 @@ impl Recorder {
     pub fn last_computer_audio(&self) -> Option<ComputerAudio> {
         *self.computer_audio.lock().unwrap()
     }
+
+    /// At launch: finishes the recordings in `folders` whose app was killed
+    /// while they ran, but never the one running in this process. Returns
+    /// the ones that are now Saved.
+    pub fn recover_at_launch(&self, folders: &[PathBuf]) -> Vec<PathBuf> {
+        // Held throughout, so no recording starts while this runs.
+        let session = self.session.lock().unwrap();
+        let running = session.as_ref().map(|session| session.folder.as_path());
+        let mut saved = Vec::new();
+        for folder in folders {
+            if Some(folder.as_path()) == running {
+                continue;
+            }
+            match recover(folder, self.encoder.as_ref()) {
+                Ok(true) => saved.push(folder.clone()),
+                Ok(false) => {}
+                Err(err) => eprintln!(
+                    "Anchovy couldn't finish the recording in {}. {err}",
+                    folder.display()
+                ),
+            }
+        }
+        saved
+    }
+}
+
+const AUDIO_MISSING: &str = "Anchovy quit during this recording, and its audio is missing.";
+const AUDIO_UNREADABLE: &str = "Anchovy quit during this recording, and its audio can't be read.";
+
+/// Finishes one recording left Recording by a killed app, and returns
+/// whether it is now Saved. Small encodes its hidden WAV as Stop would
+/// have. High's `audio.wav` gets a header that matches its length, since
+/// the last update may be a second behind. Both keep the inputs recorded at
+/// start. Audio that is missing or can't be read makes the recording Failed.
+fn recover(folder: &Path, encoder: &dyn Encoder) -> Result<bool, NotesError> {
+    if small::recover(folder, encoder)?.is_some() {
+        return Ok(true);
+    }
+    // Folders without a readable state were not left by a recording.
+    let Ok(mut state) = read_state(folder) else {
+        return Ok(false);
+    };
+    if state.status != Status::Recording {
+        return Ok(false);
+    }
+    let next = match repair_header(&folder.join(Quality::High.audio_file_name())) {
+        Ok(_) => Status::Saved,
+        Err(err) => Status::Failed {
+            reason: if err.kind() == io::ErrorKind::NotFound {
+                AUDIO_MISSING
+            } else {
+                AUDIO_UNREADABLE
+            }
+            .into(),
+        },
+    };
+    state.move_to(next)?;
+    write_state(folder, &state)?;
+    Ok(state.status == Status::Saved)
 }
 
 /// The computer audio check plays this tone from Anchovy's own process into a
@@ -1780,5 +1840,157 @@ mod tests {
         })
         .unwrap();
         assert_eq!(json, serde_json::json!({"seconds": 2.0, "bytes": 192_044}));
+    }
+
+    // --- Launch ----------------------------------------------------------
+
+    /// A High recording whose app was killed: `audio.wav` holds 2.5 s of
+    /// audio, and its header was last updated at 1 s.
+    fn killed_high_recording(dir: &TestDir) -> PathBuf {
+        let folder = create_recording_folder(dir.path(), &START).unwrap();
+        let mut state = State::new();
+        state.inputs = ComputerAudio::Recording.inputs();
+        state.source = Source::Meeting;
+        write_state(&folder, &state).unwrap();
+        let file = BufWriter::new(File::create(folder.join("audio.wav")).unwrap());
+        let mut writer = WavWriter::new(file, OUTPUT_RATE).unwrap();
+        let second = sine(300.0, 0.3, OUTPUT_RATE, 1.0);
+        writer.write(&second).unwrap();
+        writer.update_header().unwrap();
+        writer.write(&second).unwrap();
+        writer.write(&second[..second.len() / 2]).unwrap();
+        // Dropping flushes the samples but leaves the header at 1 s.
+        drop(writer);
+        folder
+    }
+
+    fn launch_recorder() -> Recorder {
+        Recorder::new(Arc::new(CopyEncoder::default()))
+    }
+
+    #[test]
+    fn a_high_recording_killed_mid_way_is_saved_at_launch_with_all_its_audio() {
+        let dir = TestDir::new();
+        let folder = killed_high_recording(&dir);
+        let library = crate::library::Library::new(dir.path().to_path_buf());
+        assert_eq!(library.list().unwrap()[0].duration_seconds, Some(1));
+
+        assert_eq!(
+            launch_recorder().recover_at_launch(std::slice::from_ref(&folder)),
+            std::slice::from_ref(&folder)
+        );
+
+        let state = read_state(&folder).unwrap();
+        assert_eq!(state.status, Status::Saved);
+        assert_eq!(state.inputs, vec![Input::Microphone, Input::ComputerAudio]);
+        assert_eq!(state.source, Source::Meeting);
+        let bytes = std::fs::read(folder.join("audio.wav")).unwrap();
+        let data = u32::from_le_bytes(bytes[40..44].try_into().unwrap());
+        assert_eq!(data, 2 * 120_000, "2.5 s of 16-bit samples at 48 kHz");
+        assert_eq!(u64::from(data) + 44, bytes.len() as u64);
+        let listed = &library.list().unwrap()[0];
+        assert_eq!(listed.status, Status::Saved);
+        assert_eq!(listed.duration_seconds, Some(2));
+    }
+
+    #[test]
+    fn a_recording_left_without_audio_is_failed_at_launch_with_a_reason() {
+        let dir = TestDir::new();
+        let folder = killed_high_recording(&dir);
+        std::fs::remove_file(folder.join("audio.wav")).unwrap();
+
+        assert!(launch_recorder()
+            .recover_at_launch(std::slice::from_ref(&folder))
+            .is_empty());
+
+        let state = read_state(&folder).unwrap();
+        assert_eq!(
+            state.status,
+            Status::Failed {
+                reason: "Anchovy quit during this recording, and its audio is missing.".into()
+            }
+        );
+        assert_eq!(state.inputs, vec![Input::Microphone, Input::ComputerAudio]);
+    }
+
+    #[test]
+    fn a_recording_whose_audio_cannot_be_read_is_failed_at_launch_with_a_reason() {
+        let dir = TestDir::new();
+        let folder = killed_high_recording(&dir);
+        std::fs::write(folder.join("audio.wav"), b"not audio").unwrap();
+
+        assert!(launch_recorder()
+            .recover_at_launch(std::slice::from_ref(&folder))
+            .is_empty());
+
+        assert_eq!(
+            read_state(&folder).unwrap().status,
+            Status::Failed {
+                reason: "Anchovy quit during this recording, and its audio can't be read.".into()
+            }
+        );
+        // Audio is never rewritten when it can't be read.
+        assert_eq!(
+            std::fs::read(folder.join("audio.wav")).unwrap(),
+            b"not audio"
+        );
+    }
+
+    #[test]
+    fn the_recording_running_in_this_process_is_left_alone_at_launch() {
+        let dir = TestDir::new();
+        let recorder = launch_recorder();
+        let running = recorder
+            .start(
+                dir.path(),
+                START,
+                Source::Manual,
+                high(),
+                |_| Ok(fake_capture(true, Arc::new(AtomicBool::new(false)))),
+                TICK,
+                |_| {},
+            )
+            .unwrap();
+        let killed = killed_high_recording(&dir);
+        thread::sleep(Duration::from_millis(100));
+
+        let recovered = recorder.recover_at_launch(&[running.folder.clone(), killed.clone()]);
+
+        assert_eq!(recovered, std::slice::from_ref(&killed));
+        assert_eq!(
+            read_state(&running.folder).unwrap().status,
+            Status::Recording
+        );
+        assert!(recorder.is_recording());
+        let saved = recorder.stop().unwrap();
+        assert_eq!(saved.folder, running.folder);
+        assert_eq!(read_state(&saved.folder).unwrap().status, Status::Saved);
+        let bytes = std::fs::read(&saved.audio).unwrap();
+        let data = u32::from_le_bytes(bytes[40..44].try_into().unwrap());
+        assert_eq!(u64::from(data) + 44, bytes.len() as u64);
+    }
+
+    #[test]
+    fn a_small_recording_killed_mid_way_is_encoded_once_at_launch() {
+        let dir = TestDir::new();
+        let folder = killed_high_recording(&dir);
+        // Small writes the same WAV, hidden in `.anchovy/`.
+        std::fs::rename(folder.join("audio.wav"), small::pending_wav(&folder)).unwrap();
+        let encoder = Arc::new(CopyEncoder::default());
+        let recorder = Recorder::new(encoder.clone());
+
+        let first = recorder.recover_at_launch(std::slice::from_ref(&folder));
+        let second = recorder.recover_at_launch(std::slice::from_ref(&folder));
+
+        assert_eq!(first, std::slice::from_ref(&folder));
+        assert!(second.is_empty());
+        assert_eq!(encoder.encoded.lock().unwrap().len(), 1);
+        assert!(folder.join("audio.m4a").is_file());
+        assert!(!folder.join("audio.wav").exists());
+        assert!(!small::pending_wav(&folder).exists());
+        let state = read_state(&folder).unwrap();
+        assert_eq!(state.status, Status::Saved);
+        assert_eq!(state.inputs, vec![Input::Microphone, Input::ComputerAudio]);
+        assert_eq!(state.source, Source::Meeting);
     }
 }
