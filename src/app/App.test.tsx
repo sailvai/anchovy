@@ -247,6 +247,7 @@ function fakeFirstLaunchThenRecording() {
             folder: live,
             microphone: "MacBook Air Microphone",
             computer_audio: "not_allowed",
+            quality: "high",
           };
         case "stop_recording":
           list = [{ ...list[0], duration_seconds: 3, status: "saved" }];
@@ -730,6 +731,7 @@ function fakeTwoFolders() {
             folder: "/Users/someone/Documents/Anchovy/2026-09-26-1502",
             microphone: "MacBook Air Microphone",
             computer_audio: "recording",
+            quality: "high",
           };
       }
     },
@@ -783,4 +785,34 @@ test("Record lets Rust use the saved device, and Change… is off while recordin
 
   fireEvent.click(screen.getByRole("button", { name: "Settings" }));
   expect(await screen.findByRole("button", { name: "Change…" })).toBeDisabled();
+});
+
+test("a Small recording says it is saved as M4A, with its size as it grows", async () => {
+  mockIPC(
+    (cmd) => {
+      const shared = windowCommand(cmd, ready);
+      if (shared !== undefined) return shared;
+      switch (cmd) {
+        case "list_recordings":
+          return [];
+        case "start_recording":
+          return {
+            folder: "/Users/someone/Documents/Anchovy/2026-09-26-1502",
+            microphone: "MacBook Air Microphone",
+            computer_audio: "recording",
+            quality: "small",
+          };
+      }
+    },
+    { shouldMockEvents: true },
+  );
+  render(<App />);
+  await screen.findByRole("heading", { name: "Ready to record" });
+
+  fireEvent.click(screen.getAllByRole("button", { name: "Record" })[0]);
+  await screen.findByRole("button", { name: "Stop" });
+  await act(() => emit("recording-progress", { seconds: 2.4, bytes: 230_444 }));
+
+  expect(screen.getByText("0.2 MB · M4A")).toBeInTheDocument();
+  expect(screen.getByText(/2026-09-26-1502\/audio\.m4a$/)).toBeInTheDocument();
 });

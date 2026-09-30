@@ -598,6 +598,11 @@ impl Pipeline {
         }
     }
 
+    /// Tells the interface that a recording changed outside the pipeline.
+    pub fn changed(&self, folder: &Path) {
+        self.inner.changed(folder);
+    }
+
     /// Where a queued or running note is.
     pub fn stage(&self, folder: &Path) -> Option<Stage> {
         self.inner.queue.lock().unwrap().stages.get(folder).cloned()

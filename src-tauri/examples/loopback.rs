@@ -2,12 +2,14 @@
 //! Needs a real Mac with audio permissions, so it is an example, not a test.
 //!
 //!   loopback tone <file.wav> [--seconds 10] [--tone-hz 997]
-//!   loopback record [--seconds 5] [--tone-hz 997] [--out <dir>]
+//!   loopback record [--seconds 5] [--tone-hz 997] [--out <dir>] [--quality small]
 //!   loopback probe
 //!
 //! `record` runs the app's own recorder (the default microphone plus the
 //! system-audio tap) while another process plays the tone, then checks that
-//! computer audio was captured and that the tone is in the saved file. The
+//! computer audio was captured and that the tone is in the saved file. With
+//! `--quality small` the file is `audio.m4a`, read back with the system
+//! decoder. The
 //! tone should start after recording does, so the check also covers a
 //! recording that begins while the Mac is silent. It
 //! prints a JSON report and exits 1 if a check fails. The microphone needs a
@@ -21,6 +23,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use anchovy_lib::m4a::mac::{describe, Decoder, MacEncoder};
 use anchovy_lib::notes::folder::Quality;
 use anchovy_lib::notes::note::Source;
 use anchovy_lib::notes::state::{read_state, Input, Status};
@@ -28,6 +31,7 @@ use anchovy_lib::recording::core::{Progress, Recorder};
 use anchovy_lib::recording::file_writer::WavWriter;
 use anchovy_lib::recording::mac;
 use anchovy_lib::recording::mixer::OUTPUT_RATE;
+use anchovy_lib::recording::small::{pending_wav, DURATION_TOLERANCE_SECONDS};
 use anchovy_lib::settings::RecordingOptions;
 use serde_json::json;
 
@@ -101,15 +105,44 @@ fn tone(args: &[String]) -> Result<bool, String> {
     Ok(true)
 }
 
+/// An M4A as 48 kHz mono floats, through the system decoder.
+fn decode(path: &std::path::Path) -> Result<Vec<f32>, String> {
+    let mut decoder = Decoder::open(path)?;
+    let format = describe(path)?;
+    if format.format_id != u32::from_be_bytes(*b"aac ")
+        || decoder.sample_rate() != f64::from(OUTPUT_RATE)
+        || decoder.channels() != 1
+    {
+        return Err(format!(
+            "{} is not AAC, mono, 48 kHz: {format:?}",
+            path.display()
+        ));
+    }
+    let mut out = Vec::new();
+    let mut block = vec![0f32; 8192];
+    loop {
+        let frames = decoder.read(&mut block)?;
+        if frames == 0 {
+            return Ok(out);
+        }
+        out.extend_from_slice(&block[..frames]);
+    }
+}
+
 fn record(args: &[String]) -> Result<bool, String> {
     let seconds: f64 = arg(args, "--seconds", 5.0);
     let hz: f64 = arg(args, "--tone-hz", 997.0);
     let out: PathBuf = arg(args, "--out", std::env::temp_dir().join("anchovy-loopback"));
+    let quality = match arg(args, "--quality", "high".to_string()).as_str() {
+        "high" => Quality::High,
+        "small" => Quality::Small,
+        other => return Err(format!("unknown quality {other}")),
+    };
     std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
 
     let excluded_own_process = mac::own_process_object().is_some();
     let events: Arc<Mutex<Vec<Progress>>> = Arc::default();
-    let recorder = Recorder::new();
+    let recorder = Recorder::new(Arc::new(MacEncoder));
     let recording = {
         let events = events.clone();
         recorder
@@ -119,7 +152,7 @@ fn record(args: &[String]) -> Result<bool, String> {
                 Source::Manual,
                 RecordingOptions {
                     input_device: None,
-                    quality: Quality::High,
+                    quality,
                 },
                 mac::start,
                 Duration::from_secs(1),
@@ -131,13 +164,18 @@ fn record(args: &[String]) -> Result<bool, String> {
     let saved = recorder.stop().map_err(|e| e.to_string())?;
     let events = events.lock().unwrap().clone();
 
-    let bytes = std::fs::read(&saved.audio).map_err(|e| e.to_string())?;
-    let samples: Vec<f32> = bytes[44..]
-        .as_chunks::<2>()
-        .0
-        .iter()
-        .map(|&b| i16::from_le_bytes(b) as f32 / i16::MAX as f32)
-        .collect();
+    let samples = match quality {
+        Quality::High => {
+            let bytes = std::fs::read(&saved.audio).map_err(|e| e.to_string())?;
+            bytes[44..]
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|&b| i16::from_le_bytes(b) as f32 / i16::MAX as f32)
+                .collect()
+        }
+        Quality::Small => decode(&saved.audio)?,
+    };
     let tone_in_file = tone_amplitude(&samples, hz);
     let state = read_state(&saved.folder).map_err(|e| e.to_string())?;
     let computer_rms = saved.levels.computer.map_or(0.0, |l| l.rms);
@@ -154,7 +192,22 @@ fn record(args: &[String]) -> Result<bool, String> {
         (
             "the file is as long as the recording",
             saved.seconds >= seconds - 0.25
-                && samples.len() as f64 / OUTPUT_RATE as f64 == saved.seconds,
+                && match quality {
+                    Quality::High => samples.len() as f64 / OUTPUT_RATE as f64 == saved.seconds,
+                    // AAC reads back within the check Stop makes.
+                    Quality::Small => {
+                        (samples.len() as f64 / OUTPUT_RATE as f64 - saved.seconds).abs()
+                            <= DURATION_TOLERANCE_SECONDS
+                    }
+                },
+        ),
+        (
+            "the audio file is named by the quality",
+            saved.audio == saved.folder.join(quality.audio_file_name()),
+        ),
+        (
+            "no hidden WAV is left, and encoding did not fail",
+            !pending_wav(&saved.folder).exists() && state.encoding_failed.is_none(),
         ),
         (
             "progress arrived about once a second and grew",
@@ -173,6 +226,7 @@ fn record(args: &[String]) -> Result<bool, String> {
         "excluded_own_process": excluded_own_process,
         "sandboxed": std::env::var("APP_SANDBOX_CONTAINER_ID").is_ok(),
         "audio": saved.audio,
+        "quality": quality,
         "seconds": saved.seconds,
         "bytes": saved.bytes,
         "progress_events": events.len(),

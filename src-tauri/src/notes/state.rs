@@ -84,6 +84,10 @@ pub struct State {
     /// existed have none and were started by Record.
     #[serde(default, skip_serializing_if = "Source::is_manual")]
     pub source: Source,
+    /// Why a Small recording could not be saved as M4A. Its audio was kept
+    /// as `audio.wav` instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encoding_failed: Option<String>,
 }
 
 impl State {
@@ -95,6 +99,7 @@ impl State {
             summary_model: None,
             inputs: Vec::new(),
             source: Source::Manual,
+            encoding_failed: None,
         }
     }
 
@@ -228,6 +233,7 @@ mod tests {
             summary_model: Some("Qwen3-4B-Instruct-2507".into()),
             inputs: vec![Input::Microphone],
             source: Source::Manual,
+            encoding_failed: Some("Disk full.".into()),
         };
 
         write_state(dir.path(), &state).unwrap();
@@ -250,6 +256,7 @@ mod tests {
             summary_model: None,
             inputs: Vec::new(),
             source: Source::Manual,
+            encoding_failed: None,
         })
         .unwrap();
         assert_eq!(json, serde_json::json!({ "status": "needs_models" }));

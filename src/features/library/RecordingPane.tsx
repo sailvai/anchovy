@@ -2,6 +2,13 @@ import { RecordDot, StopIcon } from "./icons";
 import { formatElapsed, formatFileSize, timeOfDay, startOfFolder } from "./library";
 import { SourceRows, type ComputerAudioRow } from "./Sources";
 import { Button } from "./ui";
+import type { Quality } from "../../ipc/settings";
+
+// What the file will be once the recording stops.
+const formats: Record<Quality, { label: string; file: string }> = {
+  high: { label: "WAV, 48 kHz, 16-bit, mono", file: "audio.wav" },
+  small: { label: "M4A", file: "audio.m4a" },
+};
 
 // Right side while recording: elapsed time and file size from the
 // recording-progress event, the two sources, and Stop.
@@ -9,6 +16,7 @@ export function RecordingPane({
   folder,
   microphone,
   computerAudio,
+  quality,
   seconds,
   bytes,
   stopping,
@@ -18,6 +26,7 @@ export function RecordingPane({
   folder: string;
   microphone: string;
   computerAudio: ComputerAudioRow;
+  quality: Quality;
   seconds: number;
   bytes: number;
   stopping: boolean;
@@ -25,6 +34,7 @@ export function RecordingPane({
   onStop: () => void;
 }) {
   const start = startOfFolder(folder);
+  const format = formats[quality];
   return (
     <div className="flex h-full items-center justify-center px-8">
       <div className="w-[400px] text-center">
@@ -39,11 +49,11 @@ export function RecordingPane({
           {formatElapsed(seconds)}
         </p>
         <p className="mt-3 text-[12px] text-muted tabular-nums">
-          {formatFileSize(bytes)} · WAV, 48 kHz, 16-bit, mono
+          {formatFileSize(bytes)} · {format.label}
         </p>
         <p className="text-[12px] text-muted">
           {start ? `Started ${timeOfDay(start)} · ` : ""}
-          {folder}/audio.wav
+          {folder}/{format.file}
         </p>
         <div className="mt-6">
           <SourceRows microphone={microphone} computerAudio={computerAudio} live />

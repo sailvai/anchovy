@@ -105,15 +105,21 @@ pub fn start(app: &AppHandle, source: Source) -> Result<Recording, String> {
     Ok(recording)
 }
 
-/// Stops recording. With Generate notes automatically on, the note starts
-/// right away; off, the recording stays Saved until Generate note.
+/// Stops recording. Small is encoded to M4A first, which takes about a
+/// second per ten minutes, so this runs off the main thread. With Generate
+/// notes automatically on, the note starts right away; off, the recording
+/// stays Saved until Generate note.
 #[tauri::command]
-pub fn stop_recording(
-    recorder: State<Arc<Recorder>>,
-    pipeline: State<Arc<Pipeline>>,
-    settings: State<Arc<SettingsStore>>,
+pub async fn stop_recording(
+    recorder: State<'_, Arc<Recorder>>,
+    pipeline: State<'_, Arc<Pipeline>>,
+    settings: State<'_, Arc<SettingsStore>>,
 ) -> Result<Saved, String> {
-    let saved = recorder.stop().map_err(|err| err.to_string())?;
+    let recorder = recorder.inner().clone();
+    let saved = tauri::async_runtime::spawn_blocking(move || recorder.stop())
+        .await
+        .map_err(|err| err.to_string())?
+        .map_err(|err| err.to_string())?;
     let automatic = settings.get().generate_notes_automatically;
     if let Err(err) = pipeline.after_recording(&saved.folder, automatic) {
         // The recording is saved either way; its note can be generated later.

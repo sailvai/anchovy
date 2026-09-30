@@ -8,6 +8,7 @@
 pub mod engines;
 pub mod folder_access;
 pub mod library;
+pub mod m4a;
 pub mod meetings;
 pub mod models;
 pub mod notes;
@@ -81,7 +82,22 @@ pub fn run() {
             // A note left Working by an app that quit will never finish.
             pipeline.recover(&folders);
             pipeline.resume_waiting(&folders);
-            app.manage(Arc::new(pipeline));
+            let pipeline = Arc::new(pipeline);
+            app.manage(pipeline.clone());
+            // A Small recording whose app was killed left its WAV in
+            // `.anchovy/`: encode it now, as Stop would have.
+            std::thread::spawn(move || {
+                for folder in &folders {
+                    match recording::small::recover(folder, &m4a::mac::MacEncoder) {
+                        Ok(Some(_)) => pipeline.changed(folder),
+                        Ok(None) => {}
+                        Err(err) => eprintln!(
+                            "Anchovy couldn't finish the recording in {}. {err}",
+                            folder.display()
+                        ),
+                    }
+                }
+            });
             meeting_commands::watch(app.handle().clone());
             Ok(())
         })
@@ -90,7 +106,7 @@ pub fn run() {
         .manage(library)
         .manage(folder_access)
         .manage(Arc::new(Setup::load(support_dir)))
-        .manage(Arc::new(Recorder::new()))
+        .manage(Arc::new(Recorder::new(Arc::new(m4a::mac::MacEncoder))))
         .manage(Arc::new(Meetings::new()))
         .invoke_handler(tauri::generate_handler![
             app_info,

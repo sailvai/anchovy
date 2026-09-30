@@ -40,6 +40,9 @@ objc2-user-notifications = { version = "0.3.2", default-features = false, featur
 objc2-core-audio = "0.3.2"
 objc2-core-audio-types = "0.3.2"
 objc2-core-foundation = "0.3.2"
+# Small quality (plan step 8): the macOS AAC encoder and decoder through
+# ExtAudioFile. No other encoder or decoder is used.
+objc2-audio-toolbox = { version = "0.3.2", default-features = false, features = ["std", "AudioFile", "ExtendedAudioFile", "objc2-core-audio-types", "objc2-core-foundation"] }
 # A lock-free single-producer ring buffer so the audio callback never locks or
 # allocates.
 rtrb = "0.4"

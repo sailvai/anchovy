@@ -42,6 +42,7 @@ import {
   type Recording as Started,
   type RecordingProgress,
 } from "../ipc/recording";
+import type { Quality } from "../ipc/settings";
 import {
   checkComputerAudio,
   openPrivacySettings,
@@ -60,6 +61,7 @@ type Live = {
   folder: string;
   microphone: string;
   computerAudio: ComputerAudioRow;
+  quality: Quality;
   progress: RecordingProgress;
 };
 
@@ -173,6 +175,7 @@ export function App() {
               folder,
               microphone: started.microphone,
               computerAudio: started.computer_audio === "recording" ? "allowed" : "denied",
+              quality: started.quality,
               progress: { seconds: 0, bytes: 0 },
             },
       );
@@ -380,6 +383,7 @@ export function App() {
         folder={live.folder}
         microphone={live.microphone}
         computerAudio={live.computerAudio}
+        quality={live.quality}
         seconds={live.progress.seconds}
         bytes={live.progress.bytes}
         stopping={busy}

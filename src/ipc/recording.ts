@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { Quality } from "./settings";
 
 // Mirrors the types in src-tauri/src/recording/core.rs and commands.rs.
 export type ComputerAudio = "recording" | "not_allowed";
@@ -17,6 +18,8 @@ export type Recording = {
   folder: string;
   microphone: string;
   computer_audio: ComputerAudio;
+  // Read from the settings when the recording started.
+  quality: Quality;
 };
 
 export type Level = { peak: number; rms: number };
@@ -31,7 +34,8 @@ export type Saved = {
   dropped_frames: number;
 };
 
-// Pushed once a second while recording.
+// Pushed once a second while recording. For Small, `bytes` is the WAV being
+// written; it becomes audio.m4a when the recording stops.
 export type RecordingProgress = { seconds: number; bytes: number };
 
 export function listInputDevices(): Promise<InputDevice[]> {

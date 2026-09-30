@@ -468,6 +468,7 @@ mod tests {
             summary_model: None,
             inputs: Vec::new(),
             source: Source::Manual,
+            encoding_failed: None,
         }
     }
 
