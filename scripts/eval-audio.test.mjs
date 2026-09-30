@@ -108,12 +108,15 @@ describe("voices", () => {
 const rms = (values) => Math.sqrt(values.reduce((sum, v) => sum + v * v, 0) / values.length);
 
 describe("noise", () => {
-  test.each(NOISE_TYPES)("%s noise is the same for the same seed and scaled to unit level", (type) => {
-    const a = noise(type, 48000, 7);
-    expect(Array.from(a)).toEqual(Array.from(noise(type, 48000, 7)));
-    expect(Array.from(a)).not.toEqual(Array.from(noise(type, 48000, 8)));
-    expect(rms(Array.from(a))).toBeCloseTo(1, 6);
-  });
+  test.each(NOISE_TYPES)(
+    "%s noise is the same for the same seed and scaled to unit level",
+    (type) => {
+      const a = noise(type, 48000, 7);
+      expect(Array.from(a)).toEqual(Array.from(noise(type, 48000, 7)));
+      expect(Array.from(a)).not.toEqual(Array.from(noise(type, 48000, 8)));
+      expect(rms(Array.from(a))).toBeCloseTo(1, 6);
+    },
+  );
 
   test("pink and brown noise are darker than white noise", () => {
     // Share of the level left after a one-sample difference, a rough high-pass.

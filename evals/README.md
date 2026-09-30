@@ -48,12 +48,12 @@ level (root mean square over the whole clip, turn gaps included). `white` is a h
 or a fan, `brown` a low rumble like air conditioning. The samples use 20 dB (light) and 15 dB
 (clearly audible).
 
-| Sample | Noise |
-| --- | --- |
-| `zh-design-review`, `zh-quarter-review`, `en-design-review`, `en-quarter-review`, `mixed-bugs` | pink, 20 dB |
-| `zh-support`, `en-support` | white, 15 dB |
-| `zh-budget`, `en-vendor` | brown, 15 dB |
-| `mixed-launch` | brown, 20 dB |
+| Sample                                                                                         | Noise        |
+| ---------------------------------------------------------------------------------------------- | ------------ |
+| `zh-design-review`, `zh-quarter-review`, `en-design-review`, `en-quarter-review`, `mixed-bugs` | pink, 20 dB  |
+| `zh-support`, `en-support`                                                                     | white, 15 dB |
+| `zh-budget`, `en-vendor`                                                                       | brown, 15 dB |
+| `mixed-launch`                                                                                 | brown, 20 dB |
 
 Synthetic speech is clean, even with the noise added, so error rates here are better than in real
 meetings.

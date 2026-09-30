@@ -10,7 +10,5 @@
     "crash on launch 这个 bug 优先级最高，这周必须修。",
     "时间戳的问题放到 next release，这次先不管。"
   ],
-  "action_items": [
-    "Karen 来 fix，周四之前给一个 build。"
-  ]
+  "action_items": ["Karen 来 fix，周四之前给一个 build。"]
 }

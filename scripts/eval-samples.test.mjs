@@ -109,9 +109,10 @@ describe("the sample set", () => {
 
   test("has noise in some Chinese, English, and mixed samples", () => {
     for (const language of ["zh", "en", "mixed"]) {
-      expect({ language, noisy: samples.some((s) => s.language === language && s.noise) }).toEqual(
-        { language, noisy: true },
-      );
+      expect({ language, noisy: samples.some((s) => s.language === language && s.noise) }).toEqual({
+        language,
+        noisy: true,
+      });
     }
   });
 });

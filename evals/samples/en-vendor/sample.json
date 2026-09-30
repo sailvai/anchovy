@@ -1,9 +1,7 @@
 {
   "language": "en",
   "noise": { "type": "brown", "snr_db": 15, "seed": 203 },
-  "decisions": [
-    "Stay with the current code signing service and renew for one year, not three."
-  ],
+  "decisions": ["Stay with the current code signing service and renew for one year, not three."],
   "action_items": [
     "Aman sends the renewal form to finance by Friday.",
     "Ralph puts a reminder in the calendar for ten months from now to compare services again."
