@@ -290,9 +290,29 @@ fn write_in(language: Option<&str>) -> String {
     format!("Write every value in {language}. Keep names and terms as they were said.")
 }
 
-/// The request for one chunk of transcript.
+/// Whether a transcript uses two scripts that each make up a real part of
+/// it, so its items may be in either language.
+pub fn mixed(transcript: &str) -> bool {
+    let Counts {
+        han,
+        kana,
+        hangul,
+        latin_words,
+    } = counts(transcript);
+    // Japanese is kana with kanji, so Chinese characters and kana count as one.
+    let total = (han + kana + hangul + latin_words) as f64;
+    [han + kana, hangul, latin_words]
+        .into_iter()
+        .filter(|&part| part > 0 && part as f64 >= SPOKEN_SHARE * total)
+        .count()
+        > 1
+}
+
+/// The request for one chunk of transcript. `mixed` is true when the whole
+/// meeting uses more than one language.
 pub fn chunk_prompt(
     language: Option<&str>,
+    mixed: bool,
     transcript: &str,
     part: Option<(usize, usize)>,
 ) -> Prompt {
@@ -321,7 +341,7 @@ pub fn chunk_prompt(
 }
 
 /// The request that merges partial answers into one.
-pub fn merge_prompt(language: Option<&str>, parts: &[Summary]) -> Prompt {
+pub fn merge_prompt(language: Option<&str>, mixed: bool, parts: &[Summary]) -> Prompt {
     let system = format!(
         "You combine notes from consecutive parts of one meeting into notes for the whole \
          meeting. Each part is a JSON object. Answer with only one JSON object and nothing \
@@ -430,6 +450,7 @@ pub fn summarize(
     if chunks.is_empty() {
         return Err(SummaryError::Invalid("The transcript is empty.".into()));
     }
+    let mixed = mixed(&transcript);
     let count = chunks.len();
     let mut done = 0;
     let mut total = count + usize::from(count > 1);
@@ -439,14 +460,14 @@ pub fn summarize(
         let part = (count > 1).then_some((index + 1, count));
         parts.push(ask(
             model,
-            &chunk_prompt(language, chunk, part),
+            &chunk_prompt(language, mixed, chunk, part),
             &transcript,
         )?);
         done += 1;
         on_part(done, total);
     }
     while parts.len() > 1 {
-        let groups = group(model, parts, language, budget)?;
+        let groups = group(model, parts, language, mixed, budget)?;
         let merges = groups.iter().filter(|group| group.len() > 1).count();
         total = done + merges + usize::from(groups.len() > 1);
         parts = Vec::with_capacity(groups.len());
@@ -455,7 +476,11 @@ pub fn summarize(
                 parts.extend(group);
                 continue;
             }
-            parts.push(ask(model, &merge_prompt(language, &group), &transcript)?);
+            parts.push(ask(
+                model,
+                &merge_prompt(language, mixed, &group),
+                &transcript,
+            )?);
             done += 1;
             on_part(done, total);
         }
@@ -469,6 +494,7 @@ fn group(
     model: &dyn Summarizer,
     parts: Vec<Summary>,
     language: Option<&str>,
+    mixed: bool,
     budget: usize,
 ) -> Result<Vec<Vec<Summary>>, EngineError> {
     let mut groups: Vec<Vec<Summary>> = Vec::new();
@@ -476,7 +502,7 @@ fn group(
     for part in parts {
         current.push(part);
         if current.len() > 2 {
-            let tokens = model.count_tokens(&merge_prompt(language, &current).user)?;
+            let tokens = model.count_tokens(&merge_prompt(language, mixed, &current).user)?;
             if tokens > budget {
                 let last = current.pop().expect("just pushed");
                 groups.push(std::mem::replace(&mut current, vec![last]));
@@ -687,7 +713,7 @@ mod tests {
 
     #[test]
     fn the_prompt_asks_for_only_json_in_the_meeting_language() {
-        let prompt = chunk_prompt(Some("Chinese"), "周五发布。", None);
+        let prompt = chunk_prompt(Some("Chinese"), false, "周五发布。", None);
         assert!(prompt.system.contains("only one JSON object"));
         assert!(prompt.system.contains(r#""summary""#));
         assert!(prompt.system.contains(r#""decisions""#));
@@ -695,11 +721,130 @@ mod tests {
         assert!(prompt.system.contains("in Chinese"));
         assert!(prompt.user.contains("周五发布。"));
 
-        let unknown = chunk_prompt(None, "Ship it.", Some((2, 3)));
+        let unknown = chunk_prompt(None, false, "Ship it.", Some((2, 3)));
         assert!(unknown
             .system
             .contains("in the language spoken in the meeting"));
         assert!(unknown.user.contains("part 2 of 3"));
+    }
+
+    #[test]
+    fn suggestions_and_questions_are_not_decisions_or_tasks() {
+        let system = chunk_prompt(Some("English"), false, "Ship it.", None).system;
+        assert!(system.contains(
+            "A suggestion, a proposal, an opinion, or a question is not a decision unless \
+             the meeting agreed to it"
+        ));
+        assert!(system.contains("not an action item unless someone took it on"));
+        assert!(system.contains("A possible follow-up nobody mentioned is not an action item"));
+    }
+
+    #[test]
+    fn items_keep_the_words_owner_and_date_that_were_said() {
+        let system = chunk_prompt(Some("English"), false, "Ship it.", None).system;
+        assert!(system.contains("Shorten, but do not rephrase or translate"));
+        assert!(system.contains("Keep the owner and the date when they were said"));
+        assert!(system.contains(r#"Never write "someone" or any other placeholder"#));
+        assert!(system.contains(r#"do not guess who "I" is"#));
+    }
+
+    const MIXED: &str = "我们先用中文说一下这周的问题，格式会乱，下周一之前修好。\
+                         On my side, users are asking for the date in the title, \
+                         and I will change the format this week.";
+
+    #[test]
+    fn items_keep_the_language_they_were_said_in_when_the_meeting_is_mixed() {
+        // The transcription model reports one language even for a mixed meeting.
+        let system = chunk_prompt(Some("English"), mixed(MIXED), MIXED, None).system;
+        assert!(system.contains("The meeting uses more than one language."));
+        assert!(system.contains("Write the summary in English."));
+        assert!(system.contains(
+            "Write each decision and action item in the language it was said in. \
+             Do not translate it."
+        ));
+        assert!(!system.contains("Write every value in English"));
+
+        // A meeting in one language keeps one language for everything.
+        let chinese =
+            chunk_prompt(Some("Chinese"), false, "我们周五发布，下周再测一次。", None).system;
+        assert!(chinese.contains("Write every value in Chinese"));
+        assert!(!chinese.contains("more than one language"));
+        assert!(!mixed(
+            "我们讨论了 Anchovy 的发布和 Qwen3 模型，下周再测一次。"
+        ));
+    }
+
+    #[test]
+    fn a_mixed_meeting_is_mixed_in_every_chunk_and_merge() {
+        // Each chunk of a mixed meeting may be in one language; the prompts
+        // follow the whole meeting.
+        let part1 = r#"{"summary": "Part one.", "decisions": [], "action_items": []}"#;
+        let part2 = r#"{"summary": "第二部分。", "decisions": [], "action_items": []}"#;
+        let merged = r#"{"summary": "Both parts, 两部分。", "decisions": [], "action_items": []}"#;
+        let mut model = Fake::new(&[part1, part2, merged]);
+        let text = lines(&[
+            &"We ship on Friday. ".repeat(4),
+            &"我们周五发布新版本。".repeat(4),
+        ]);
+        summarize(&mut model, &text, Some("English"), 90, &mut |_, _| {}).unwrap();
+        assert_eq!(model.prompts.len(), 3);
+        for (prompt, _) in &model.prompts {
+            assert!(
+                prompt.system.contains("in the language it was said in"),
+                "{}",
+                prompt.system
+            );
+            assert!(!prompt.system.contains("Write every value in English"));
+        }
+    }
+
+    #[test]
+    fn the_merge_keeps_each_item_as_the_parts_wrote_it() {
+        let part = parse(EN, None).unwrap();
+        let system = merge_prompt(Some("English"), false, &[part.clone(), part]).system;
+        assert!(system.contains("Copy each decision and action item exactly as a part wrote it"));
+        assert!(system.contains("in the language it is written in"));
+        assert!(system.contains("Do not rewrite, combine, translate, or add items."));
+        assert!(system.contains("Remove an item only when it repeats another item"));
+    }
+
+    /// More tokens than the summary model's tokenizer gives: every mark and
+    /// CJK character is a token, and a word is one token per six letters.
+    fn at_most_tokens(text: &str) -> usize {
+        let mut tokens = 0;
+        let mut word: usize = 0;
+        for c in text.chars().chain([' ']) {
+            if c.is_ascii_alphanumeric() {
+                word += 1;
+                continue;
+            }
+            tokens += word.div_ceil(6);
+            word = 0;
+            if !c.is_whitespace() {
+                tokens += 1;
+            }
+        }
+        tokens
+    }
+
+    #[test]
+    fn the_instructions_fit_the_room_left_for_them() {
+        assert_eq!(at_most_tokens("Ship it, Sam."), 5);
+        assert_eq!(at_most_tokens("Keep wording 周五"), 5);
+        // The chat template adds a few tokens around each message.
+        let template = 32;
+        let room = PROMPT_TOKENS * 3 / 4;
+        let prompts = [
+            chunk_prompt(Some("English"), false, "", Some((10, 12))),
+            chunk_prompt(Some("English"), true, "", Some((10, 12))),
+            chunk_prompt(None, true, "", None),
+            merge_prompt(Some("English"), false, &[]),
+            merge_prompt(Some("English"), true, &[]),
+        ];
+        for prompt in prompts {
+            let tokens = at_most_tokens(&prompt.system) + at_most_tokens(&prompt.user) + template;
+            assert!(tokens <= room, "{tokens} > {room}: {}", prompt.system);
+        }
     }
 
     #[test]
@@ -807,13 +952,19 @@ mod tests {
         // The budget holds a merge of three partial answers but not four.
         let budget = model
             .count_tokens(
-                &merge_prompt(None, &[parsed.clone(), parsed.clone(), parsed.clone()]).user,
+                &merge_prompt(
+                    None,
+                    false,
+                    &[parsed.clone(), parsed.clone(), parsed.clone()],
+                )
+                .user,
             )
             .unwrap();
         let four = model
             .count_tokens(
                 &merge_prompt(
                     None,
+                    false,
                     &[parsed.clone(), parsed.clone(), parsed.clone(), parsed],
                 )
                 .user,
