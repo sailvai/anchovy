@@ -46,6 +46,7 @@ impl Status {
         matches!(
             (self, next),
             (Recording, Saved)
+                | (Recording, Failed { .. })
                 | (Saved, NeedsModels)
                 | (Saved, Working)
                 | (NeedsModels, Working)

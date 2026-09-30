@@ -89,25 +89,16 @@ pub fn run() {
             }
             let pipeline = Pipeline::new(deps, note_commands::emitter(app.handle().clone()));
             let folders = note_commands::recording_folders(&app.state::<Library>());
-            // A note left Working by an app that quit will never finish.
-            pipeline.recover(&folders);
-            pipeline.resume_waiting(&folders);
-            let pipeline = Arc::new(pipeline);
-            app.manage(pipeline.clone());
-            // A Small recording whose app was killed left its WAV in
-            // `.anchovy/`: encode it now, as Stop would have.
-            std::thread::spawn(move || {
-                for folder in &folders {
-                    match recording::small::recover(folder, &m4a::mac::MacEncoder) {
-                        Ok(Some(_)) => pipeline.changed(folder),
-                        Ok(None) => {}
-                        Err(err) => eprintln!(
-                            "Anchovy couldn't finish the recording in {}. {err}",
-                            folder.display()
-                        ),
-                    }
-                }
-            });
+            // Recordings left Recording by an app that was killed are
+            // finished before the library is shown and before any note
+            // starts.
+            let recovered = app.state::<Arc<Recorder>>().recover_at_launch(&folders);
+            let automatic = app
+                .state::<Arc<SettingsStore>>()
+                .get()
+                .generate_notes_automatically;
+            pipeline.launch(&folders, &recovered, automatic);
+            app.manage(Arc::new(pipeline));
             meeting_commands::watch(app.handle().clone());
             Ok(())
         })

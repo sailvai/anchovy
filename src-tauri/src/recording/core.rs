@@ -16,12 +16,13 @@ use std::time::{Duration, Instant};
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde::Serialize;
 
-use super::file_writer::WavWriter;
+use super::file_writer::{repair_header, WavWriter};
 use super::mixer::{Mixer, OUTPUT_RATE};
 use super::small::{self, Encoder};
 use crate::notes::folder::{create_recording_folder, Quality, StartTime};
 use crate::notes::note::Source;
-use crate::notes::state::{write_state, Input, State, Status};
+use crate::notes::state::{read_state, write_state, Input, State, Status};
+use crate::notes::NotesError;
 use crate::settings::RecordingOptions;
 
 /// Core Audio objects Anchovy creates (the private aggregate device) have UIDs
@@ -814,13 +815,20 @@ impl Recorder {
     }
 
     /// At launch: finishes the recordings in `folders` whose app was killed
-    /// while they ran. Returns the ones that are now Saved.
+    /// while they ran, but never the one running in this process. Returns
+    /// the ones that are now Saved.
     pub fn recover_at_launch(&self, folders: &[PathBuf]) -> Vec<PathBuf> {
+        // Held throughout, so no recording starts while this runs.
+        let session = self.session.lock().unwrap();
+        let running = session.as_ref().map(|session| session.folder.as_path());
         let mut saved = Vec::new();
         for folder in folders {
-            match small::recover(folder, self.encoder.as_ref()) {
-                Ok(Some(_)) => saved.push(folder.clone()),
-                Ok(None) => {}
+            if Some(folder.as_path()) == running {
+                continue;
+            }
+            match recover(folder, self.encoder.as_ref()) {
+                Ok(true) => saved.push(folder.clone()),
+                Ok(false) => {}
                 Err(err) => eprintln!(
                     "Anchovy couldn't finish the recording in {}. {err}",
                     folder.display()
@@ -829,6 +837,41 @@ impl Recorder {
         }
         saved
     }
+}
+
+const AUDIO_MISSING: &str = "Anchovy quit during this recording, and its audio is missing.";
+const AUDIO_UNREADABLE: &str = "Anchovy quit during this recording, and its audio can't be read.";
+
+/// Finishes one recording left Recording by a killed app, and returns
+/// whether it is now Saved. Small encodes its hidden WAV as Stop would
+/// have. High's `audio.wav` gets a header that matches its length, since
+/// the last update may be a second behind. Both keep the inputs recorded at
+/// start. Audio that is missing or can't be read makes the recording Failed.
+fn recover(folder: &Path, encoder: &dyn Encoder) -> Result<bool, NotesError> {
+    if small::recover(folder, encoder)?.is_some() {
+        return Ok(true);
+    }
+    // Folders without a readable state were not left by a recording.
+    let Ok(mut state) = read_state(folder) else {
+        return Ok(false);
+    };
+    if state.status != Status::Recording {
+        return Ok(false);
+    }
+    let next = match repair_header(&folder.join(Quality::High.audio_file_name())) {
+        Ok(_) => Status::Saved,
+        Err(err) => Status::Failed {
+            reason: if err.kind() == io::ErrorKind::NotFound {
+                AUDIO_MISSING
+            } else {
+                AUDIO_UNREADABLE
+            }
+            .into(),
+        },
+    };
+    state.move_to(next)?;
+    write_state(folder, &state)?;
+    Ok(state.status == Status::Saved)
 }
 
 /// The computer audio check plays this tone from Anchovy's own process into a

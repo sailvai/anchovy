@@ -593,11 +593,20 @@ impl Pipeline {
         }
     }
 
-    /// At launch, once `recovered` recordings were finished: fails the notes
-    /// an app that quit left Working, and starts the notes that waited for
-    /// models.
-    pub fn launch(&self, folders: &[PathBuf], _recovered: &[PathBuf], _automatic: bool) {
+    /// At launch, once the recordings an app that quit left Recording are
+    /// finished (`recovered` are the ones now Saved): fails the notes it left
+    /// Working, treats each recovered recording as a stopped one, and starts
+    /// the notes that waited for models.
+    pub fn launch(&self, folders: &[PathBuf], recovered: &[PathBuf], automatic: bool) {
         self.recover(folders);
+        for folder in recovered {
+            if let Err(err) = self.after_recording(folder, automatic) {
+                eprintln!(
+                    "Anchovy couldn't start the note in {}. {err}",
+                    folder.display()
+                );
+            }
+        }
         self.resume_waiting(folders);
     }
 
