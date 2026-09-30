@@ -1,0 +1,13 @@
+{
+  "language": "en",
+  "noise": { "type": "pink", "snr_db": 20, "seed": 201 },
+  "decisions": [
+    "Put the settings in three groups: recording, notes, and models.",
+    "Collapse the models that are not downloaded.",
+    "Keep the storage folder at the top."
+  ],
+  "action_items": [
+    "Grace sends the updated design by Friday.",
+    "Oliver checks how long the change will take to build and has an estimate on Monday."
+  ]
+}

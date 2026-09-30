@@ -1,0 +1,28 @@
+Samantha: Okay, let's start the quarterly review. Three parts today: the numbers for this quarter, what didn't go well, and the priorities for next quarter. I'll try to keep it to half an hour.
+Samantha: First, the numbers. We shipped three releases this quarter, one fewer than planned. Downloads doubled compared with last quarter, mostly because of one article that was shared a lot last month. About forty percent of new users are still using the app after the first week, which is five points better than last quarter.
+Moira: Let me add something about the people who leave. Most people who stay record at least two meetings a week. Many of the people who leave close the app during the first launch, before the models finish downloading. The download takes more than ten minutes, and a lot of people don't wait.
+Daniel: I can confirm that. On my home connection, both models took about fifteen minutes. On a slow connection it could be half an hour.
+Samantha: So the model download is a real problem. Let's write it down and come back to it when we talk about next quarter.
+Samantha: Second, what didn't go well. I'll start with my own part. We shipped one release fewer because signing and notarization took much longer than we expected, almost two weeks in total. Nobody on the team had done it before, and the documentation was thin.
+Rishi: Another problem is test hardware. We only have one Mac with eight gigabytes of memory, and several bugs were only found after users reported them.
+Moira: And support. Right now I answer every support email myself. It's about forty emails a week, and my replies are getting slower. Sometimes people wait three or four days.
+Samantha: Okay, three problems: signing is slow, we don't have enough test hardware, and support replies are slow. Let's take them one at a time.
+Samantha: For signing, I'd like the whole process written down, and every step that can be automated moved into continuous integration. Daniel, you've done this before. Could you own it?
+Daniel: Yes. I'll write the document first and then automate it. The document can be done by the end of this month. The automation will probably take until the middle of next month.
+Samantha: Good. Daniel owns the signing process, and the document is done by the end of this month.
+Rishi: For hardware, the budget meeting already approved two more eight gigabyte Macs, and they should arrive next week. When they do, I'll run the release checks on both of them for every release.
+Samantha: Great. So that's a rule from now on: every release runs the release checks on an eight gigabyte Mac before it ships.
+Moira: For support I have two ideas. One is to write help pages for the ten most common questions, so I can reply with a link. The other is that everyone takes turns answering email, one day a week each.
+Daniel: I agree with the help pages. I'm less sure about taking turns. Engineers might answer in a way that is too technical.
+Samantha: Then let's do this. Write the help pages first, and try taking turns for one month. We'll look at how it's going in the Friday meeting each week. Moira, you know the common questions best. Could you write the help pages within two weeks?
+Moira: Yes, within two weeks.
+Samantha: Third, priorities for next quarter. I only want two, because more than that won't get done. The first is the model download we just talked about. The second is summary quality. The most common complaint in feedback is that the summary misses action items.
+Rishi: For the download, could people start with a smaller model? They download the small one first, start using the app right away, and the big one downloads in the background.
+Daniel: That's possible technically, but it adds another screen, and we'd have to explain why there are two models. I'm worried it will confuse people.
+Samantha: I think the idea is right. Let's see a design first and check whether it can be explained simply. Rishi, can you bring a proposal by next Tuesday?
+Rishi: Sure, by next Tuesday.
+Samantha: For summary quality, we need more evaluation samples first. We have so few that when we change the prompt we can't tell whether it got better or worse. The goal is at least ten samples in Chinese and ten in English. I'll own that.
+Daniel: Please make sure some samples have background noise and several speakers. The ones we have now are too clean.
+Samantha: Yes, we'll add those. Okay, let me sum up. Next quarter we only work on two things: the model download and summary quality. Daniel owns signing, with the document done by the end of the month. Every release runs the release checks on an eight gigabyte Mac. Moira writes the help pages within two weeks, and we try taking turns on email for one month. Rishi brings the small model proposal by next Tuesday. And I'll add the evaluation samples. Any questions?
+Moira: None from me.
+Samantha: Then that's it for today. Thanks, everyone.

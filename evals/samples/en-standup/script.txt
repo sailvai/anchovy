@@ -1,0 +1,6 @@
+Samantha: Good morning. Quick standup. What did you do yesterday, what are you doing today, and is anything blocking you?
+Daniel: Yesterday I finished the folder picker. Today I'm writing tests for it. Nothing is blocking me.
+Karen: I'm blocked on the new icons. The designer is away until Wednesday, so I can't finish the sidebar.
+Samantha: Then let's move the sidebar to next week and use the old icons for now. Karen, can you help Daniel with the folder picker tests today?
+Karen: Sure, happy to.
+Samantha: Great. I'll send the designer a message about the icons this afternoon. Same time tomorrow.

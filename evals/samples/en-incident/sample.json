@@ -1,0 +1,15 @@
+{
+  "language": "en",
+  "decisions": [
+    "After any change to the update feed, download the feed from a clean Mac and confirm it lists the latest version.",
+    "Turn off the default empty file setting in the storage service.",
+    "A job runs every hour, and if the versions don't match for more than an hour, it posts to the team channel.",
+    "Add one line about it to the next release notes, and no separate announcement."
+  ],
+  "action_items": [
+    "Daniel adds the feed check step to the release checklist today.",
+    "Tessa turns off the default empty file setting this afternoon, and Aman reviews it.",
+    "Aman builds the hourly feed check by the end of next week.",
+    "Karen writes the line for the release notes."
+  ]
+}

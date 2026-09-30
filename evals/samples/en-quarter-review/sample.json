@@ -1,0 +1,16 @@
+{
+  "language": "en",
+  "noise": { "type": "pink", "snr_db": 20, "seed": 204 },
+  "decisions": [
+    "Daniel owns the signing process, and the document is done by the end of this month.",
+    "Every release runs the release checks on an eight gigabyte Mac before it ships.",
+    "Write the help pages first, and try taking turns answering email for one month.",
+    "Next quarter we only work on two things: the model download and summary quality."
+  ],
+  "action_items": [
+    "Daniel writes the signing document by the end of this month and then automates it.",
+    "Moira writes help pages for the ten most common questions within two weeks.",
+    "Rishi brings a proposal for starting with a smaller model by next Tuesday.",
+    "Add evaluation samples, at least ten in Chinese and ten in English."
+  ]
+}

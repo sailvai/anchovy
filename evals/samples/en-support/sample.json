@@ -1,0 +1,14 @@
+{
+  "language": "en",
+  "noise": { "type": "white", "snr_db": 15, "seed": 202 },
+  "decisions": [
+    "When it fails, the app has to say why and what to do next.",
+    "Add a show in Finder button to the settings screen.",
+    "Write a help page explaining how to turn the microphone permission back on."
+  ],
+  "action_items": [
+    "Moira fixes the failure message by next Wednesday.",
+    "Rishi builds the show in Finder button this week.",
+    "Publish the microphone help page tomorrow."
+  ]
+}

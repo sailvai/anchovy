@@ -1,0 +1,6 @@
+Tingting: 今天我们过一下 bug list。第一个是 crash on launch，只在 macOS 十四上出现。
+Karen: I can reproduce it. It happens when the notes folder is on an external drive that isn't connected.
+Tingting: 那这个 bug 优先级最高，这周必须修。Karen，你来 fix，周四之前给我一个 build。
+Karen: Okay, a build by Thursday.
+Flo (Chinese (China mainland)): 第二个是转写里的时间戳偶尔差三秒，这个不影响使用。
+Tingting: 那时间戳的问题放到 next release，这次先不管。

@@ -1,0 +1,29 @@
+Karen: Thanks for joining. This is the review of last Tuesday's incident, when the update check stopped working for about six hours. The goal is to understand what happened and agree on what we change. It's not about blame.
+Karen: Aman, you were on call. Can you walk us through the timeline?
+Reed (English (UK)): Sure. At about nine in the morning, we moved the update feed to a new storage bucket. The move itself went fine. But the old address kept answering with an empty feed instead of redirecting. So every copy of the app that checked for updates was told there was nothing new.
+Tessa: Which is worse than an error, because nothing looked wrong. No alerts, no crashes, just silence.
+Reed (English (UK)): Right. We only noticed at around three in the afternoon, when a tester asked why she hadn't received the release we had announced that morning. I checked the feed by hand, saw it was empty, and put the old file back at the old address. By a quarter past three, updates were working again.
+Karen: So about six hours. How many people were affected?
+Reed (English (UK)): Everyone who checked for updates in that window. The app checks once a day, so roughly a quarter of our users. Nobody lost any data. They just got the update a day later.
+Daniel: I want to understand why the old address answered at all. Shouldn't it have returned an error?
+Tessa: That's a setting in the storage service. When you delete a file, it can serve a default empty file. That setting was turned on years ago for a different project, and nobody remembered it.
+Karen: Okay. So there are really three problems. First, the move had no check afterwards. Second, the old address failed silently. Third, nothing was watching the feed, so we found out from a tester.
+Daniel: For the first one, I'd add a step to the release checklist: after any change to the update feed, download the feed from a clean Mac and confirm it lists the latest version.
+Karen: That makes sense. Let's add that step to the checklist. Daniel, can you write it up today?
+Daniel: Yes, I'll add it today.
+Tessa: For the second, I'll turn off the default empty file setting. Then a missing file returns an error, which the app already shows as could not check for updates.
+Karen: Good. Tessa turns off the setting. By when?
+Tessa: This afternoon. It's a small change, but I'd like Aman to review it.
+Reed (English (UK)): Happy to.
+Karen: For the third problem, the watching. Do we want an automatic check?
+Daniel: We can't add any tracking to the app, so it has to be outside the app. A small scheduled job could download the feed every hour and compare the version with the latest release.
+Tessa: And if they don't match for more than an hour, it sends a message to the team channel.
+Karen: I like that, and it doesn't touch the app at all. Let's do it. The job runs every hour, and if the versions don't match for more than an hour, it posts to the team channel. Aman, can you build that by the end of next week?
+Reed (English (UK)): Yes, by the end of next week.
+Karen: One more thing. Should we tell users?
+Daniel: I don't think we need a big announcement. Nobody lost data and the update arrived a day later.
+Tessa: But a line in the next release notes would be honest. Something like: last week some copies of the app did not see a new update for a few hours.
+Karen: Agreed. We add one line about it to the next release notes, and no separate announcement. I'll write that line myself.
+Karen: Let me sum up. Daniel adds the feed check to the release checklist today. Tessa turns off the default empty file setting this afternoon, and Aman reviews it. Aman builds the hourly feed check by the end of next week. And I'll write the line for the release notes. Anything I missed?
+Reed (English (UK)): No, that covers it.
+Karen: Great. Thanks, everyone, and thanks Aman for the quick fix on the day.

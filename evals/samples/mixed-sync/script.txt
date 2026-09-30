@@ -1,0 +1,6 @@
+Tingting: 我们先用中文说一下，然后请 Daniel 讲他那边的情况。这周的主要问题是笔记同步到别的软件的时候，格式会乱。
+Flo (Chinese (China mainland)): 对，标题和列表都乱了。我查了一下，是换行的问题，下周一之前可以修好。
+Daniel: Thanks. On my side, users in London are asking for the date to be written the British way in the note title. I think we should follow the system setting instead of choosing one format.
+Samantha: I agree. Follow the system setting, so nobody has to change anything.
+Tingting: 好，那就这么定：日期跟着系统设置走。Daniel，你这周把这个改好。
+Daniel: Sure, I'll have it done this week.
