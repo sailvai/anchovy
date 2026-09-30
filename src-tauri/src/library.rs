@@ -413,6 +413,7 @@ fn parse_note(text: &str) -> NoteView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::notes::note::Source;
     use crate::notes::state::{write_state, State};
     use crate::notes::test_dir::TestDir;
 
@@ -466,6 +467,7 @@ mod tests {
             asr_model: None,
             summary_model: None,
             inputs: Vec::new(),
+            source: Source::Manual,
         }
     }
 

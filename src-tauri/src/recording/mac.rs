@@ -78,11 +78,11 @@ fn get_qualified<T: Copy, Q>(
     Ok(value)
 }
 
-fn get<T: Copy>(object: u32, selector: u32, scope: u32, initial: T) -> Result<T> {
+pub(crate) fn get<T: Copy>(object: u32, selector: u32, scope: u32, initial: T) -> Result<T> {
     get_qualified::<T, ()>(object, selector, scope, None, initial)
 }
 
-fn get_string(object: u32, selector: u32) -> Result<String> {
+pub(crate) fn get_string(object: u32, selector: u32) -> Result<String> {
     let raw: *const CFString = get(
         object,
         selector,
@@ -97,7 +97,7 @@ fn get_string(object: u32, selector: u32) -> Result<String> {
 
 /// A variable-size property, in u64 storage so an AudioBufferList read into
 /// it is aligned.
-fn get_bytes(object: u32, selector: u32, scope: u32) -> Result<Vec<u64>> {
+pub(crate) fn get_bytes(object: u32, selector: u32, scope: u32) -> Result<Vec<u64>> {
     let mut addr = address(selector, scope);
     let mut size = 0u32;
     // SAFETY: plain out-parameter call.

@@ -74,6 +74,15 @@ export function RecordDot({ className = "" }: { className?: string }) {
   return <span className={`inline-block size-2 rounded-full bg-recording ${className}`} />;
 }
 
+export function MeetingIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="1.75" y="4" width="8.5" height="8" rx="1.5" />
+      <path d="m10.25 7 4-2.25v6.5l-4-2.25" />
+    </Svg>
+  );
+}
+
 export function MoreIcon(props: IconProps) {
   return (
     <Svg {...props}>

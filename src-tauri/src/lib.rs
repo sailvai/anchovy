@@ -2,11 +2,13 @@
 //! state, and note.md), the library (the recording list), the models module
 //! (the shipped list and downloads), the recording module, first launch
 //! (the notes folder bookmark and permissions), the engines that run the
-//! models, and the pipeline from a recording to its note.
+//! models, the pipeline from a recording to its note, and the meeting
+//! prompt.
 
 pub mod engines;
 pub mod folder_access;
 pub mod library;
+pub mod meetings;
 pub mod models;
 pub mod notes;
 pub mod pipeline;
@@ -17,6 +19,7 @@ use engines::llama::LlamaEngines;
 use engines::mac::MacMemory;
 use folder_access::{commands as folder_commands, mac as folder_mac, FolderAccess};
 use library::{commands as library_commands, Library};
+use meetings::commands::{self as meeting_commands, Meetings};
 use models::catalog::Catalog;
 use models::store::Store;
 use models::{commands as model_commands, mac as model_mac, Models};
@@ -77,6 +80,7 @@ pub fn run() {
             pipeline.recover(&folders);
             pipeline.resume_waiting(&folders);
             app.manage(Arc::new(pipeline));
+            meeting_commands::watch(app.handle().clone());
             Ok(())
         })
         .manage(models)
@@ -85,6 +89,7 @@ pub fn run() {
         .manage(folder_access)
         .manage(Arc::new(Setup::load(support_dir)))
         .manage(Arc::new(Recorder::new()))
+        .manage(Arc::new(Meetings::new()))
         .invoke_handler(tauri::generate_handler![
             app_info,
             library_commands::list_recordings,
@@ -111,6 +116,8 @@ pub fn run() {
             setup_commands::check_computer_audio,
             setup_commands::finish_setup,
             setup_commands::open_privacy_settings,
+            meeting_commands::meeting_prompt,
+            meeting_commands::answer_meeting_prompt,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Anchovy");

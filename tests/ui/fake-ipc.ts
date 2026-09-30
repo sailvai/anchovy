@@ -33,6 +33,9 @@ export const defaultCommands: FakeCommands = {
   note_progress: {},
   generate_note: null,
   resume_waiting_notes: null,
+  // No meeting going on.
+  meeting_prompt: null,
+  answer_meeting_prompt: null,
   // Event listeners: the interface subscribes to download progress.
   "plugin:event|listen": 0,
   "plugin:event|unlisten": null,

@@ -189,4 +189,21 @@ for (const colorScheme of ["light", "dark"] as const) {
     await expect(page.getByRole("menuitem", { name: "Move to Trash" })).toBeVisible();
     await snap(page, `note-menu-${colorScheme}.png`);
   });
+
+  // The mock's meeting-banner screen: Zoom has started while the Ready note
+  // is open.
+  test(`meeting prompt, ${colorScheme}`, async ({ page }) => {
+    await open(page, colorScheme, recordings, {
+      meeting_prompt: {
+        id: 1,
+        app: "zoom",
+        headline: "Zoom meeting started.",
+        body: "Record it? Anchovy records only if you choose Record.",
+      },
+    });
+    await page.getByRole("button", { name: /^16:45/ }).click();
+    await expect(page.getByText("Action items")).toBeVisible();
+    await expect(page.getByRole("status", { name: "Meeting prompt" })).toBeVisible();
+    await snap(page, `meeting-banner-${colorScheme}.png`);
+  });
 }

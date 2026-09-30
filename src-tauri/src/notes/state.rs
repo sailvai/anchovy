@@ -6,6 +6,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use super::note::Source;
 use super::{write_atomically, NotesError, APP_DIR};
 
 pub const STATE_FILE: &str = "state.json";
@@ -79,6 +80,10 @@ pub struct State {
     /// before recording existed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub inputs: Vec<Input>,
+    /// Record or the meeting prompt. Folders written before the prompt
+    /// existed have none and were started by Record.
+    #[serde(default, skip_serializing_if = "Source::is_manual")]
+    pub source: Source,
 }
 
 impl State {
@@ -89,6 +94,7 @@ impl State {
             asr_model: None,
             summary_model: None,
             inputs: Vec::new(),
+            source: Source::Manual,
         }
     }
 
@@ -221,6 +227,7 @@ mod tests {
             asr_model: Some("Qwen3-ASR 1.7B".into()),
             summary_model: Some("Qwen3-4B-Instruct-2507".into()),
             inputs: vec![Input::Microphone],
+            source: Source::Manual,
         };
 
         write_state(dir.path(), &state).unwrap();
@@ -242,6 +249,7 @@ mod tests {
             asr_model: None,
             summary_model: None,
             inputs: Vec::new(),
+            source: Source::Manual,
         })
         .unwrap();
         assert_eq!(json, serde_json::json!({ "status": "needs_models" }));
@@ -261,6 +269,19 @@ mod tests {
         );
         let back: State = serde_json::from_value(json).unwrap();
         assert_eq!(back, state);
+    }
+
+    #[test]
+    fn source_is_kept_and_older_state_json_reads_as_manual() {
+        let mut state = State::new();
+        state.source = Source::Meeting;
+        let json = serde_json::to_value(&state).unwrap();
+        assert_eq!(json["source"], "meeting");
+        assert_eq!(serde_json::from_value::<State>(json).unwrap(), state);
+
+        // Before the meeting prompt, every recording was started by Record.
+        let older: State = serde_json::from_str(r#"{ "status": "saved" }"#).unwrap();
+        assert_eq!(older.source, Source::Manual);
     }
 
     #[test]

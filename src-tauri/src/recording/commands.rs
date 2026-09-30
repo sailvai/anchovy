@@ -1,18 +1,21 @@
 //! Tauri commands for recording. Thin wrappers over `core::Recorder` and
-//! `mac`; while recording, elapsed time and file size reach the interface as
-//! a `recording-progress` event once a second.
+//! `mac`; a start reaches the interface as a `recording-started` event, and
+//! while recording, elapsed time and file size as a `recording-progress`
+//! event once a second.
 
 use serde::Serialize;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use super::core::{ComputerAudio, Recorder, Recording, Saved, PROGRESS_INTERVAL};
 use super::mac;
 use crate::library::Library;
+use crate::notes::note::Source;
 use crate::pipeline::{NoteSettings, Pipeline};
 use crate::setup::can_record;
 
 pub const PROGRESS_EVENT: &str = "recording-progress";
+pub const STARTED_EVENT: &str = "recording-started";
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct InputDeviceView {
@@ -61,14 +64,20 @@ pub fn recording_sources(
 }
 
 #[tauri::command]
-pub fn start_recording(
-    app: AppHandle,
-    recorder: State<Arc<Recorder>>,
-    library: State<Library>,
+pub fn start_recording(app: AppHandle, device_uid: Option<String>) -> Result<Recording, String> {
+    start(&app, Source::Manual, device_uid)
+}
+
+/// Starts recording for Record or for the meeting prompt, and tells the
+/// window with a `recording-started` event, since the prompt may be
+/// answered in a notification.
+pub fn start(
+    app: &AppHandle,
+    source: Source,
     device_uid: Option<String>,
 ) -> Result<Recording, String> {
     // The same folder the library lists, so a new recording shows up there.
-    let notes_dir = library.notes_dir();
+    let notes_dir = app.state::<Library>().notes_dir();
     let microphone = crate::setup::mac::microphone_access();
     if !can_record(notes_dir.is_some(), microphone) {
         return Err(match notes_dir {
@@ -77,17 +86,22 @@ pub fn start_recording(
         });
     }
     let notes_dir = notes_dir.unwrap_or_default();
-    recorder
+    let progress = app.clone();
+    let recording = app
+        .state::<Arc<Recorder>>()
         .start(
             &notes_dir,
             mac::local_now(),
+            source,
             || mac::start(device_uid.as_deref()),
             PROGRESS_INTERVAL,
-            move |progress| {
-                let _ = app.emit(PROGRESS_EVENT, progress);
+            move |p| {
+                let _ = progress.emit(PROGRESS_EVENT, p);
             },
         )
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.to_string())?;
+    let _ = app.emit(STARTED_EVENT, &recording);
+    Ok(recording)
 }
 
 /// Stops recording. With Generate notes automatically on, the note starts

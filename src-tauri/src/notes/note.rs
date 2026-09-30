@@ -22,16 +22,21 @@ pub const HEADINGS: [&str; 5] = [
 ];
 
 /// How the recording was started.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Source {
     /// The user pressed Record.
+    #[default]
     Manual,
     /// The user accepted the meeting prompt.
     Meeting,
 }
 
 impl Source {
+    pub fn is_manual(&self) -> bool {
+        *self == Source::Manual
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Source::Manual => "manual",

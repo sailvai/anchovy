@@ -139,7 +139,13 @@ test("an empty library says so and still offers Record", async () => {
   expect(screen.getByRole("button", { name: "Models" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
   expect(new Set(calls.map(({ cmd }) => cmd))).toEqual(
-    new Set(["setup_status", "list_recordings", "recording_sources", "check_computer_audio"]),
+    new Set([
+      "setup_status",
+      "list_recordings",
+      "recording_sources",
+      "check_computer_audio",
+      "meeting_prompt",
+    ]),
   );
 });
 
