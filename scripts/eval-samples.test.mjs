@@ -42,6 +42,17 @@ describe.each(readdirSync(samplesDir).sort())("eval sample %s", (id) => {
     expect(new Set(turns.map((turn) => turn.voice)).size).toBeGreaterThanOrEqual(2);
   });
 
+  // The Eloquence Chinese voices misread Latin letters and English words
+  // ("transcript" is heard as "ice cube", "八个G" as "八个刻"), so the
+  // transcript would not be what was said. Tingting reads English well.
+  test("a Chinese Eloquence voice reads no Latin letters", () => {
+    if (!existsSync(path.join(dir, "script.txt"))) return;
+    const misread = parseScript(readFileSync(path.join(dir, "script.txt"), "utf8")).filter(
+      (turn) => turn.voice.endsWith("(Chinese (China mainland))") && latin.test(turn.text),
+    );
+    expect(misread).toEqual([]);
+  });
+
   test("noise, when there is some, has a known type, a level, and a seed", () => {
     if (!sample.noise) return;
     expect(sample.noise).toEqual({
