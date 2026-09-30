@@ -145,15 +145,13 @@ pub fn run(folder: &Path, deps: &Deps, on_stage: &mut dyn FnMut(Stage)) -> Resul
     }
     let start = start_time(folder).ok_or("The recording folder is not named by its start time.")?;
 
-    // 1. The audio, as the transcription model takes it.
-    let audio = folder.join(Quality::High.audio_file_name());
-    if !audio.is_file() {
-        return Err(if folder.join(Quality::Small.audio_file_name()).is_file() {
-            "Anchovy can't read M4A recordings yet.".into()
-        } else {
-            "The audio file is missing.".into()
-        });
-    }
+    // 1. The audio, as the transcription model takes it: audio.wav for High,
+    // audio.m4a for Small.
+    let (audio, quality) = [Quality::High, Quality::Small]
+        .into_iter()
+        .map(|quality| (folder.join(quality.audio_file_name()), quality))
+        .find(|(audio, _)| audio.is_file())
+        .ok_or("The audio file is missing.")?;
     let samples = read_model_audio(&audio).map_err(|err| err.to_string())?;
     let rate = f64::from(MODEL_RATE);
     let audio_seconds = samples.len() as f64 / rate;
@@ -243,7 +241,8 @@ pub fn run(folder: &Path, deps: &Deps, on_stage: &mut dyn FnMut(Stage)) -> Resul
         duration_seconds: audio_seconds as u64,
         source: state.source,
         computer_audio: state.inputs.contains(&Input::ComputerAudio),
-        quality: Quality::High,
+        // Names the file in `audio:` and the Audio link.
+        quality,
         asr_model: asr.display_name.clone(),
         summary_model: llm.display_name.clone(),
         summary: summary.summary.clone(),
@@ -1049,6 +1048,62 @@ We planned the launch.
             Some("Qwen3-4B-Instruct-2507")
         );
         assert!(!s.folder.join(APP_DIR).join(NOTE_TMP_FILE).exists());
+    }
+
+    #[test]
+    fn a_small_recording_in_m4a_becomes_a_ready_note_that_links_audio_m4a() {
+        use crate::recording::small::Encoder;
+        let s = setup(&[VALID]);
+        // As Small leaves it: audio.m4a and no audio.wav, 70 s at 48 kHz.
+        let wav = s.folder.join(APP_DIR).join("recording.wav");
+        let mut writer = crate::recording::file_writer::WavWriter::new(
+            std::io::BufWriter::new(fs::File::create(&wav).unwrap()),
+            48_000,
+        )
+        .unwrap();
+        let tone: Vec<f32> = (0..70 * 48_000)
+            .map(|i| 0.1 * (i as f32 * 0.05 / 3.0).sin())
+            .collect();
+        writer.write(&tone).unwrap();
+        writer.finish().unwrap();
+        crate::m4a::mac::MacEncoder
+            .encode(&wav, &s.folder.join("audio.m4a"))
+            .unwrap();
+        fs::remove_file(&wav).unwrap();
+        fs::remove_file(s.folder.join("audio.wav")).unwrap();
+
+        s.pipeline.generate(&s.folder, false).unwrap();
+        s.pipeline.wait_idle();
+
+        assert_eq!(status(&s.folder), Status::Ready);
+        let text = note(&s.folder).unwrap();
+        assert!(text.contains("\naudio: audio.m4a\n"), "{text}");
+        assert!(
+            text.ends_with("## Audio\n\n[audio.m4a](audio.m4a)\n"),
+            "{text}"
+        );
+        assert!(text.contains("\nduration: 00:01:10\n"), "{text}");
+        assert_eq!(
+            s.engines.log.entries()[..4],
+            [
+                "load asr",
+                "transcribe 30 s",
+                "transcribe 30 s",
+                "transcribe 16 s"
+            ]
+        );
+        assert!(!s.folder.join("audio.wav").exists());
+    }
+
+    #[test]
+    fn a_recording_without_audio_fails_with_the_reason() {
+        let s = setup(&[VALID]);
+        fs::remove_file(s.folder.join("audio.wav")).unwrap();
+
+        s.pipeline.generate(&s.folder, false).unwrap();
+        s.pipeline.wait_idle();
+
+        assert_eq!(failed_reason(&s.folder), "The audio file is missing.");
     }
 
     #[test]

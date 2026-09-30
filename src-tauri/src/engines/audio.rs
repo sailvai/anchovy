@@ -1,8 +1,10 @@
 //! Reads a recording and converts it to what the transcription models take:
 //! 16 kHz mono floats. The file on disk is never changed.
 //!
-//! The recording is read in blocks and resampled as it is read, so an hour
-//! of 48 kHz audio never sits in memory at full rate.
+//! High is a WAV, read here; Small is an M4A, decoded by macOS through
+//! `m4a::mac`. Either way the recording is read in blocks, mixed to mono,
+//! and resampled as it is read, so an hour of 48 kHz audio never sits in
+//! memory at full rate.
 
 use std::fmt;
 use std::fs::File;
@@ -15,7 +17,7 @@ pub const MODEL_RATE: u32 = 16_000;
 #[derive(Debug)]
 pub enum AudioError {
     Io(io::Error),
-    /// Not a WAV file this reader understands.
+    /// Not a WAV or M4A file this reader understands.
     Unsupported(String),
 }
 
@@ -126,43 +128,120 @@ fn read_format(reader: &mut (impl Read + Seek), file_len: u64) -> Result<Format,
     }
 }
 
-/// Reads a WAV file as 16 kHz mono: channels are averaged, then resampled.
+/// Frames read and converted at a time.
+const BLOCK_FRAMES: usize = 16_384;
+
+/// Reads a WAV or M4A file as 16 kHz mono: channels are averaged, then
+/// resampled. The file's contents decide which it is; a file that is neither
+/// is refused with a reason.
 pub fn read_model_audio(path: &Path) -> Result<Vec<f32>, AudioError> {
+    let mut start = [0u8; 12];
+    let got = File::open(path)?.read(&mut start)?;
+    let start = &start[..got];
+    if start.starts_with(b"RIFF") && start.get(8..12) == Some(b"WAVE") {
+        return read_wav(path);
+    }
+    if start.get(4..8) == Some(b"ftyp") {
+        return read_m4a(path);
+    }
+    let what = match path.extension().and_then(|ext| ext.to_str()) {
+        Some("wav") => "not a WAV file",
+        Some("m4a") => "not an M4A file",
+        _ => "not a WAV or M4A file",
+    };
+    Err(AudioError::Unsupported(what.into()))
+}
+
+fn read_wav(path: &Path) -> Result<Vec<f32>, AudioError> {
     let file = File::open(path)?;
     let file_len = file.metadata()?.len();
     let mut reader = BufReader::with_capacity(1 << 16, file);
     let format = read_format(&mut reader, file_len)?;
     reader.seek(SeekFrom::Start(format.data_start))?;
 
-    let frame_bytes = format.encoding.bytes() * format.channels as usize;
+    let sample_bytes = format.encoding.bytes();
+    let frame_bytes = sample_bytes * format.channels as usize;
     let frames = format.data_len / frame_bytes as u64;
-    let mut resampler = Resampler::new(format.rate, MODEL_RATE);
-    let mut out = Vec::with_capacity(resampler.output_len(frames) as usize);
-    let mut bytes = vec![0u8; frame_bytes * 16_384];
-    let mut mono = Vec::with_capacity(16_384);
+    let mut model = ToModel::new(format.rate, format.channels.into(), Some(frames));
+    let mut bytes = vec![0u8; frame_bytes * BLOCK_FRAMES];
+    let mut samples = Vec::with_capacity(BLOCK_FRAMES * format.channels as usize);
     let mut left = frames;
     while left > 0 {
-        let take = left.min(16_384) as usize;
+        let take = left.min(BLOCK_FRAMES as u64) as usize;
         let block = &mut bytes[..take * frame_bytes];
         reader.read_exact(block)?;
-        mono.clear();
-        mono.extend(block.chunks_exact(frame_bytes).map(|frame| {
-            let sum: f32 = frame
-                .chunks_exact(format.encoding.bytes())
+        samples.clear();
+        samples.extend(
+            block
+                .chunks_exact(sample_bytes)
                 .map(|sample| match format.encoding {
                     Encoding::Pcm16 => {
                         f32::from(i16::from_le_bytes([sample[0], sample[1]])) / 32768.0
                     }
                     Encoding::Float32 => f32::from_le_bytes(sample.try_into().unwrap()),
-                })
-                .sum();
-            sum / f32::from(format.channels)
-        }));
-        resampler.push(&mono, &mut out);
+                }),
+        );
+        model.push(&samples);
         left -= take as u64;
     }
-    resampler.finish(&mut out);
-    Ok(out)
+    Ok(model.finish())
+}
+
+/// Small's M4A, decoded by macOS at the file's own rate and channels, then
+/// mixed and resampled here like a WAV.
+fn read_m4a(path: &Path) -> Result<Vec<f32>, AudioError> {
+    let unreadable = |err: String| AudioError::Unsupported(err.trim_end_matches('.').into());
+    let mut decoder = crate::m4a::mac::Decoder::open(path).map_err(unreadable)?;
+    let channels = decoder.channels() as usize;
+    let rate = decoder.sample_rate().round() as u32;
+    let mut model = ToModel::new(rate, channels, None);
+    let mut samples = vec![0f32; BLOCK_FRAMES * channels];
+    loop {
+        let frames = decoder.read(&mut samples).map_err(unreadable)?;
+        if frames == 0 {
+            return Ok(model.finish());
+        }
+        model.push(&samples[..frames * channels]);
+    }
+}
+
+/// Interleaved blocks in, 16 kHz mono out: each frame's channels are
+/// averaged, then resampled as the blocks arrive.
+struct ToModel {
+    channels: usize,
+    resampler: Resampler,
+    mono: Vec<f32>,
+    out: Vec<f32>,
+}
+
+impl ToModel {
+    /// `frames`, when known, sizes the output once.
+    fn new(rate: u32, channels: usize, frames: Option<u64>) -> Self {
+        let resampler = Resampler::new(rate, MODEL_RATE);
+        let out = Vec::with_capacity(frames.map_or(0, |n| resampler.output_len(n) as usize));
+        ToModel {
+            channels,
+            resampler,
+            mono: Vec::with_capacity(BLOCK_FRAMES),
+            out,
+        }
+    }
+
+    fn push(&mut self, interleaved: &[f32]) {
+        self.mono.clear();
+        let channels = self.channels as f32;
+        self.mono.extend(
+            interleaved
+                .chunks_exact(self.channels)
+                .map(|frame| frame.iter().sum::<f32>() / channels),
+        );
+        self.resampler.push(&self.mono, &mut self.out);
+    }
+
+    fn finish(mut self) -> Vec<f32> {
+        self.resampler.finish(&mut self.out);
+        self.out
+    }
 }
 
 /// Zero crossings of the windowed-sinc kernel on each side. More is sharper
@@ -448,11 +527,14 @@ mod tests {
     #[test]
     fn other_files_are_refused_with_a_reason() {
         let dir = TestDir::new();
-        let path = write(&dir, b"....ftypM4A ");
+        // Neither WAV nor M4A. (Until plan step 8 this case was an M4A,
+        // which is now read.)
+        let path = dir.path().join("audio.mp3");
+        std::fs::write(&path, b"ID3\x04\0\0\0\0\0\0 not audio Anchovy writes").unwrap();
         let err = read_model_audio(&path).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "Anchovy can't read this audio: not a WAV file."
+            "Anchovy can't read this audio: not a WAV or M4A file."
         );
 
         let path = write(&dir, &wav(16_000, 1, 1, 24, &[0; 6], 6));
@@ -460,6 +542,82 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "Anchovy can't read this audio: 24-bit audio, format 1."
+        );
+    }
+
+    /// An M4A as Small writes it, from `samples` at 48 kHz, with the system
+    /// encoder.
+    fn m4a(dir: &TestDir, samples: &[f32]) -> std::path::PathBuf {
+        use crate::recording::file_writer::WavWriter;
+        use crate::recording::small::Encoder;
+        let wav = dir.path().join("recording.wav");
+        let mut writer = WavWriter::new(std::fs::File::create(&wav).unwrap(), 48_000).unwrap();
+        writer.write(samples).unwrap();
+        writer.finish().unwrap();
+        let path = dir.path().join("audio.m4a");
+        crate::m4a::mac::MacEncoder.encode(&wav, &path).unwrap();
+        std::fs::remove_file(wav).unwrap();
+        path
+    }
+
+    #[test]
+    fn a_small_m4a_becomes_16_khz_with_speech_kept() {
+        let dir = TestDir::new();
+        let path = m4a(&dir, &sine(1000.0, 48_000, 2.0, 0.5));
+
+        let out = read_model_audio(&path).unwrap();
+
+        // AAC reads back within the 50 ms Stop checks.
+        assert!(
+            (out.len() as i64 - 32_000).abs() <= 800,
+            "{} samples",
+            out.len()
+        );
+        let middle = &out[3_200..28_800];
+        assert!(
+            (rms(middle) - 0.5 / 2f32.sqrt()).abs() < 0.02,
+            "rms {}",
+            rms(middle)
+        );
+        let crossings = rising_zero_crossings(middle);
+        assert!(
+            (1_598..=1_602).contains(&crossings),
+            "{crossings} crossings"
+        );
+    }
+
+    #[test]
+    fn an_m4a_reads_like_the_wav_it_came_from() {
+        let dir = TestDir::new();
+        let input = sine(440.0, 48_000, 1.0, 0.3);
+        let data = pcm16(&input);
+        let wav = write(&dir, &wav(48_000, 1, 1, 16, &data, data.len() as u32));
+        let from_wav = read_model_audio(&wav).unwrap();
+
+        let from_m4a = read_model_audio(&m4a(&dir, &input)).unwrap();
+
+        // Lossy, so not equal: the same length and level.
+        assert!(
+            (from_m4a.len() as i64 - from_wav.len() as i64).abs() <= 800,
+            "{} vs {}",
+            from_m4a.len(),
+            from_wav.len()
+        );
+        let (a, b) = (rms(&from_wav[1600..14_400]), rms(&from_m4a[1600..14_400]));
+        assert!((a - b).abs() < 0.01, "{a} vs {b}");
+    }
+
+    #[test]
+    fn an_m4a_that_is_not_audio_is_refused_with_a_reason() {
+        let dir = TestDir::new();
+        let path = dir.path().join("audio.m4a");
+        std::fs::write(&path, b"\0\0\0\x18ftypM4A \0\0\0\0 and then nothing").unwrap();
+
+        let err = read_model_audio(&path).unwrap_err().to_string();
+
+        assert!(
+            err.starts_with("Anchovy can't read this audio: macOS could not open the audio file"),
+            "{err}"
         );
     }
 }
