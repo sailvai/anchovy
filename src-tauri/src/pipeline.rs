@@ -593,6 +593,14 @@ impl Pipeline {
         }
     }
 
+    /// At launch, once `recovered` recordings were finished: fails the notes
+    /// an app that quit left Working, and starts the notes that waited for
+    /// models.
+    pub fn launch(&self, folders: &[PathBuf], _recovered: &[PathBuf], _automatic: bool) {
+        self.recover(folders);
+        self.resume_waiting(folders);
+    }
+
     /// Tells the interface that a recording changed outside the pipeline.
     pub fn changed(&self, folder: &Path) {
         self.inner.changed(folder);
@@ -621,6 +629,8 @@ mod tests {
     use crate::notes::note::NOTE_TMP_FILE;
     use crate::notes::test_dir::TestDir;
     use crate::notes::APP_DIR;
+    use crate::recording::core::Recorder;
+    use crate::recording::small::fake::CopyEncoder;
     use std::fs;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -1623,5 +1633,44 @@ We planned the launch.
 
         assert_eq!(status(&s.folder), Status::Ready);
         assert!(note(&s.folder).is_some());
+    }
+
+    // --- Launch ----------------------------------------------------------
+
+    /// Leaves `folder` as an app killed while recording does, then runs the
+    /// recording side of launch.
+    fn recovered_at_launch(folder: &Path) -> Vec<PathBuf> {
+        let mut state = read_state(folder).unwrap();
+        state.status = Status::Recording;
+        write_state(folder, &state).unwrap();
+        let recorder = Recorder::new(Arc::new(CopyEncoder::default()));
+        recorder.recover_at_launch(&[folder.to_path_buf()])
+    }
+
+    #[test]
+    fn with_automatic_notes_on_a_recording_recovered_at_launch_gets_its_note() {
+        let s = setup(&[VALID]);
+        let recovered = recovered_at_launch(&s.folder);
+
+        s.pipeline
+            .launch(std::slice::from_ref(&s.folder), &recovered, true);
+        s.pipeline.wait_idle();
+
+        assert_eq!(status(&s.folder), Status::Ready);
+        assert!(note(&s.folder).is_some());
+    }
+
+    #[test]
+    fn with_automatic_notes_off_a_recording_recovered_at_launch_stays_saved() {
+        let s = setup(&[VALID]);
+        let recovered = recovered_at_launch(&s.folder);
+
+        s.pipeline
+            .launch(std::slice::from_ref(&s.folder), &recovered, false);
+        s.pipeline.wait_idle();
+
+        assert_eq!(status(&s.folder), Status::Saved);
+        assert_eq!(note(&s.folder), None);
+        assert!(s.engines.log.entries().is_empty());
     }
 }
