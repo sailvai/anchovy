@@ -18,14 +18,13 @@ pub mod commands;
 
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
-use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::engines::audio::{read_model_audio, MODEL_RATE};
 use crate::engines::summary::{self, Summary};
@@ -336,34 +335,6 @@ fn start_time(folder: &Path) -> Option<StartTime> {
     })
 }
 
-/// Settings the pipeline reads. The Settings screen (plan step 8) edits
-/// them; until then the file only exists if written by hand.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct NoteSettings {
-    /// Start a note as soon as a recording stops. On by default.
-    pub generate_notes_automatically: bool,
-}
-
-impl Default for NoteSettings {
-    fn default() -> Self {
-        NoteSettings {
-            generate_notes_automatically: true,
-        }
-    }
-}
-
-pub const SETTINGS_FILE: &str = "settings.json";
-
-/// Reads `settings.json` from the app's support folder. A missing or
-/// unreadable file means the defaults.
-pub fn read_settings(dir: &Path) -> NoteSettings {
-    fs::read(dir.join(SETTINGS_FILE))
-        .ok()
-        .and_then(|data| serde_json::from_slice(&data).ok())
-        .unwrap_or_default()
-}
-
 #[derive(Debug)]
 pub enum PipelineError {
     /// The note is already being written or waiting its turn.
@@ -650,6 +621,7 @@ mod tests {
     use crate::notes::note::NOTE_TMP_FILE;
     use crate::notes::test_dir::TestDir;
     use crate::notes::APP_DIR;
+    use std::fs;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     const START: StartTime = StartTime {
@@ -1572,19 +1544,5 @@ We planned the launch.
 
         assert_eq!(status(&s.folder), Status::Ready);
         assert!(note(&s.folder).is_some());
-    }
-
-    #[test]
-    fn automatic_notes_are_on_unless_turned_off() {
-        let dir = TestDir::new();
-        assert!(read_settings(dir.path()).generate_notes_automatically);
-        fs::write(dir.path().join(SETTINGS_FILE), "not json").unwrap();
-        assert!(read_settings(dir.path()).generate_notes_automatically);
-        fs::write(
-            dir.path().join(SETTINGS_FILE),
-            r#"{"generate_notes_automatically": false}"#,
-        )
-        .unwrap();
-        assert!(!read_settings(dir.path()).generate_notes_automatically);
     }
 }

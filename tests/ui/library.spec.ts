@@ -110,7 +110,11 @@ async function open(
     read_note: note,
     list_models: models(true),
     // The mock's Saved recording is waiting for Generate note.
-    note_settings: { generate_notes_automatically: false },
+    get_settings: {
+      input_device: null,
+      recording_quality: "high",
+      generate_notes_automatically: false,
+    },
     note_progress: { [transcribing.folder]: transcribing },
     ...commands,
   });

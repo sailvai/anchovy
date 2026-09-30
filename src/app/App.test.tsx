@@ -452,8 +452,12 @@ function fakeNotes(
           return list;
         case "read_note":
           return note;
-        case "note_settings":
-          return { generate_notes_automatically: automatic };
+        case "get_settings":
+          return {
+            input_device: null,
+            recording_quality: "high",
+            generate_notes_automatically: automatic,
+          };
         case "note_progress":
           return progress;
         case "resume_waiting_notes":

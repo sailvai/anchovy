@@ -4,7 +4,6 @@ import { afterEach, expect, test } from "vitest";
 import {
   generateNote,
   noteProgress,
-  noteSettings,
   onNoteProgress,
   onNotesChanged,
   resumeWaitingNotes,
@@ -17,20 +16,17 @@ test("commands use the Rust names and arguments", async () => {
   const calls: { cmd: string; args: unknown }[] = [];
   mockIPC((cmd, args) => {
     calls.push({ cmd, args });
-    if (cmd === "note_settings") return { generate_notes_automatically: false };
     if (cmd === "note_progress") return {};
     return null;
   });
 
   await generateNote("2026-09-26-1410", true);
   await noteProgress();
-  expect(await noteSettings()).toEqual({ generate_notes_automatically: false });
   await resumeWaitingNotes();
 
   expect(calls).toEqual([
     { cmd: "generate_note", args: { folder: "2026-09-26-1410", replace: true } },
     { cmd: "note_progress", args: {} },
-    { cmd: "note_settings", args: {} },
     { cmd: "resume_waiting_notes", args: {} },
   ]);
 });

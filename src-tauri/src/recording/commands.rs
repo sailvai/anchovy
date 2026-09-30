@@ -11,7 +11,8 @@ use super::core::{ComputerAudio, Recorder, Recording, Saved, PROGRESS_INTERVAL};
 use super::mac;
 use crate::library::Library;
 use crate::notes::note::Source;
-use crate::pipeline::{NoteSettings, Pipeline};
+use crate::pipeline::Pipeline;
+use crate::settings::SettingsStore;
 use crate::setup::can_record;
 
 pub const PROGRESS_EVENT: &str = "recording-progress";
@@ -110,11 +111,11 @@ pub fn start(
 pub fn stop_recording(
     recorder: State<Arc<Recorder>>,
     pipeline: State<Arc<Pipeline>>,
-    settings: State<NoteSettings>,
+    settings: State<Arc<SettingsStore>>,
 ) -> Result<Saved, String> {
     let saved = recorder.stop().map_err(|err| err.to_string())?;
-    if let Err(err) = pipeline.after_recording(&saved.folder, settings.generate_notes_automatically)
-    {
+    let automatic = settings.get().generate_notes_automatically;
+    if let Err(err) = pipeline.after_recording(&saved.folder, automatic) {
         // The recording is saved either way; its note can be generated later.
         eprintln!("Anchovy couldn't start the note. {err}");
     }

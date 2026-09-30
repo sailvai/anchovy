@@ -29,7 +29,11 @@ export const defaultCommands: FakeCommands = {
     can_record: true,
   },
   check_computer_audio: "allowed",
-  note_settings: { generate_notes_automatically: true },
+  get_settings: {
+    input_device: null,
+    recording_quality: "high",
+    generate_notes_automatically: true,
+  },
   note_progress: {},
   generate_note: null,
   resume_waiting_notes: null,

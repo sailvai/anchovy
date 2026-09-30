@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { listModels, onModelsChanged, type ModelView } from "../../ipc/models";
-import { noteSettings, type Stage } from "../../ipc/notes";
+import type { Stage } from "../../ipc/notes";
+import { getSettings } from "../../ipc/settings";
 import {
   AlertIcon,
   CheckIcon,
@@ -99,7 +100,7 @@ export function NotePane({
   useEffect(() => {
     if (status !== "saved") return;
     let current = true;
-    noteSettings().then(
+    getSettings().then(
       (settings) => current && setAutomatic(settings?.generate_notes_automatically ?? null),
       () => {},
     );

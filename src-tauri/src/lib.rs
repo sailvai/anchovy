@@ -2,8 +2,8 @@
 //! state, and note.md), the library (the recording list), the models module
 //! (the shipped list and downloads), the recording module, first launch
 //! (the notes folder bookmark and permissions), the engines that run the
-//! models, the pipeline from a recording to its note, and the meeting
-//! prompt.
+//! models, the pipeline from a recording to its note, the meeting prompt,
+//! and the settings.
 
 pub mod engines;
 pub mod folder_access;
@@ -13,6 +13,7 @@ pub mod models;
 pub mod notes;
 pub mod pipeline;
 pub mod recording;
+pub mod settings;
 pub mod setup;
 
 use engines::llama::LlamaEngines;
@@ -27,6 +28,7 @@ use pipeline::{commands as note_commands, Deps, Pipeline, MEMORY_WAIT};
 use recording::commands as recording_commands;
 use recording::core::Recorder;
 use serde::Serialize;
+use settings::{commands as settings_commands, SettingsStore};
 use setup::{commands as setup_commands, Setup};
 use std::sync::Arc;
 use tauri::Manager;
@@ -64,7 +66,7 @@ pub fn run() {
         Ok(None) => {}
         Err(err) => eprintln!("Anchovy can't read the saved notes folder. {err}"),
     }
-    let note_settings = pipeline::read_settings(&support_dir);
+    let settings = Arc::new(SettingsStore::load(support_dir.clone()));
     let deps = Deps {
         models: models.clone(),
         engines: Arc::new(LlamaEngines),
@@ -84,7 +86,7 @@ pub fn run() {
             Ok(())
         })
         .manage(models)
-        .manage(note_settings)
+        .manage(settings)
         .manage(library)
         .manage(folder_access)
         .manage(Arc::new(Setup::load(support_dir)))
@@ -107,7 +109,6 @@ pub fn run() {
             recording_commands::stop_recording,
             note_commands::generate_note,
             note_commands::note_progress,
-            note_commands::note_settings,
             note_commands::resume_waiting_notes,
             folder_commands::choose_notes_folder,
             folder_commands::use_default_notes_folder,
@@ -118,6 +119,8 @@ pub fn run() {
             setup_commands::open_privacy_settings,
             meeting_commands::meeting_prompt,
             meeting_commands::answer_meeting_prompt,
+            settings_commands::get_settings,
+            settings_commands::update_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Anchovy");
