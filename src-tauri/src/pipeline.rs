@@ -31,7 +31,7 @@ use crate::engines::summary::{self, Summary};
 use crate::engines::windows::{self, Joiner, Segment, OVERLAP_SECONDS, WINDOW_SECONDS};
 use crate::engines::{Engines, ModelFiles};
 use crate::models::catalog::Role;
-use crate::notes::folder::{Quality, StartTime};
+use crate::notes::folder::{audio_file, StartTime};
 use crate::notes::note::{write_note, Note, NOTE_FILE};
 use crate::notes::state::{read_state, write_state, Input, State, Status};
 use crate::notes::NotesError;
@@ -147,11 +147,7 @@ pub fn run(folder: &Path, deps: &Deps, on_stage: &mut dyn FnMut(Stage)) -> Resul
 
     // 1. The audio, as the transcription model takes it: audio.wav for High,
     // audio.m4a for Small.
-    let (audio, quality) = [Quality::High, Quality::Small]
-        .into_iter()
-        .map(|quality| (folder.join(quality.audio_file_name()), quality))
-        .find(|(audio, _)| audio.is_file())
-        .ok_or("The audio file is missing.")?;
+    let (audio, quality) = audio_file(folder).ok_or("The audio file is missing.")?;
     let samples = read_model_audio(&audio).map_err(|err| err.to_string())?;
     let rate = f64::from(MODEL_RATE);
     let audio_seconds = samples.len() as f64 / rate;

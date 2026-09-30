@@ -17,7 +17,7 @@ use std::sync::RwLock;
 
 use serde::Serialize;
 
-use crate::notes::folder::Quality;
+use crate::notes::folder::audio_file;
 use crate::notes::note::NOTE_FILE;
 use crate::notes::state::{read_state, Status, STATE_FILE};
 use crate::notes::APP_DIR;
@@ -148,6 +148,12 @@ impl Library {
         Ok(path)
     }
 
+    /// The recording's `audio.wav` or `audio.m4a`, inside the notes folder.
+    /// `None` before either exists.
+    pub fn audio_of(&self, folder: &str) -> Result<Option<PathBuf>, LibraryError> {
+        Ok(audio_file(&self.path_of(folder)?).map(|(path, _)| path))
+    }
+
     pub fn read_note(&self, folder: &str) -> Result<NoteView, LibraryError> {
         let text = fs::read_to_string(self.path_of(folder)?.join(NOTE_FILE))?;
         Ok(parse_note(&text))
@@ -218,10 +224,7 @@ impl FolderName {
 
 /// Reads one recording folder, or `None` if it holds nothing Anchovy wrote.
 fn read_recording(dir: &Path, name: &str, key: &FolderName) -> Option<Recording> {
-    let audio = [Quality::High, Quality::Small]
-        .map(|quality| dir.join(quality.audio_file_name()))
-        .into_iter()
-        .find(|path| path.is_file());
+    let audio = audio_file(dir).map(|(path, _)| path);
     let has_state = dir.join(APP_DIR).join(STATE_FILE).is_file();
     let has_note = dir.join(NOTE_FILE).is_file();
     let status = if has_state {

@@ -26,6 +26,15 @@ export function readNote(folder: string): Promise<NoteView> {
   return invoke<NoteView>("read_note", { folder });
 }
 
+// Mirrors `RecordingAudio` in src-tauri/src/library.rs: the recording's
+// audio.wav or audio.m4a, inside the notes folder.
+export type RecordingAudio = { path: string; name: string };
+
+// Null when the recording has no audio file yet.
+export function recordingAudio(folder: string): Promise<RecordingAudio | null> {
+  return invoke<RecordingAudio | null>("recording_audio", { folder });
+}
+
 export function showInFinder(folder: string): Promise<void> {
   return invoke("show_in_finder", { folder });
 }
@@ -150,6 +159,17 @@ export function formatElapsed(seconds: number): string {
   return [Math.floor(whole / 3600), Math.floor(whole / 60) % 60, whole % 60]
     .map((part) => String(part).padStart(2, "0"))
     .join(":");
+}
+
+// "0:00" and "1:05" while playing; the length with two-digit minutes, "27:14"
+// or "09:12", as in the mock. Past an hour both read "1:06:21".
+export function clock(seconds: number, length = false): string {
+  const whole = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(whole / 3600);
+  const minutes = Math.floor(whole / 60) % 60;
+  const rest = String(whole % 60).padStart(2, "0");
+  if (hours > 0) return `${hours}:${String(minutes).padStart(2, "0")}:${rest}`;
+  return `${length ? String(minutes).padStart(2, "0") : minutes}:${rest}`;
 }
 
 // Decimal megabytes, as Finder shows file sizes.

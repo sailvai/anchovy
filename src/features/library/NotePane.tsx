@@ -17,11 +17,14 @@ import {
   inputsLabel,
   noteBlocks,
   readNote,
+  recordingAudio,
   sourceLabel,
   startTitle,
   type NoteView,
   type Recording,
+  type RecordingAudio,
 } from "./library";
+import { Player } from "./Player";
 import { headline, missingModels, missingTitle, reasonDetail, transcribedLabel } from "./notes";
 import { Button, Progress } from "./ui";
 
@@ -66,6 +69,25 @@ export function NotePane({
   const [models, setModels] = useState<ModelView[] | null>(null);
   const [automatic, setAutomatic] = useState<boolean | null>(null);
   const noteState = loaded.folder === folder ? loaded.state : null;
+  const [audio, setAudio] = useState<{ folder: string; audio: RecordingAudio | null }>({
+    folder,
+    audio: null,
+  });
+  const beingRecorded = status === "recording";
+
+  // The player, for any recording with audio, except while it is recorded.
+  useEffect(() => {
+    if (beingRecorded) return;
+    let current = true;
+    recordingAudio(folder).then(
+      (found) => current && setAudio({ folder, audio: found }),
+      () => current && setAudio({ folder, audio: null }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [folder, beingRecorded]);
+  const playable = !beingRecorded && audio.folder === folder ? audio.audio : null;
 
   useEffect(() => {
     if (status !== "ready") return;
@@ -182,6 +204,11 @@ export function NotePane({
       )}
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
         <div className="max-w-[620px]">
+          {playable && (
+            <div className="mb-6">
+              <Player key={playable.path} audio={playable} seconds={recording.duration_seconds} />
+            </div>
+          )}
           {status === "ready" ? (
             noteState && "error" in noteState ? (
               <Panel title="Anchovy can't read note.md" tone="failed">

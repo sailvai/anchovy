@@ -13,6 +13,7 @@ pub mod meetings;
 pub mod models;
 pub mod notes;
 pub mod pipeline;
+pub mod player;
 pub mod recording;
 pub mod settings;
 pub mod setup;
@@ -26,6 +27,7 @@ use models::catalog::Catalog;
 use models::store::Store;
 use models::{commands as model_commands, mac as model_mac, Models};
 use pipeline::{commands as note_commands, Deps, Pipeline, MEMORY_WAIT};
+use player::commands as player_commands;
 use recording::commands as recording_commands;
 use recording::core::Recorder;
 use serde::Serialize;
@@ -77,6 +79,14 @@ pub fn run() {
     };
     tauri::Builder::default()
         .setup(move |app| {
+            // The player may read the notes folder, and nothing else.
+            if let Some(notes_dir) = app.state::<Library>().notes_dir() {
+                if let Err(err) =
+                    player::follow_notes_folder(&app.asset_protocol_scope(), None, &notes_dir)
+                {
+                    eprintln!("Anchovy can't open the notes folder to the player. {err}");
+                }
+            }
             let pipeline = Pipeline::new(deps, note_commands::emitter(app.handle().clone()));
             let folders = note_commands::recording_folders(&app.state::<Library>());
             // A note left Working by an app that quit will never finish.
@@ -112,6 +122,7 @@ pub fn run() {
             app_info,
             library_commands::list_recordings,
             library_commands::read_note,
+            player_commands::recording_audio,
             library_commands::show_in_finder,
             library_commands::move_to_trash,
             model_commands::list_models,

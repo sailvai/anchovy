@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use objc2::MainThreadMarker;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use super::mac::{self, MacBookmarks};
 use super::{default_folder, describe, FolderAccess, NotesFolder};
@@ -35,14 +35,25 @@ fn home() -> Result<PathBuf, String> {
     mac::user_home().map_err(|err| err.to_string())
 }
 
+/// Makes `folder` the notes folder: the bookmark, the library, and the
+/// player's scope, which forbids the old folder and allows the new one.
 fn use_folder(
+    app: &AppHandle,
     access: &NotesAccess,
     library: &Library,
     folder: &Path,
     home: &Path,
 ) -> Result<NotesFolder, String> {
     let folder = access.choose(folder).map_err(|err| err.to_string())?;
+    let old = library.notes_dir();
     library.set_notes_dir(folder.clone());
+    if let Err(err) =
+        crate::player::follow_notes_folder(&app.asset_protocol_scope(), old.as_deref(), &folder)
+    {
+        // The notes folder is changed either way; the player then says it
+        // cannot play until Anchovy restarts.
+        eprintln!("Anchovy can't open the notes folder to the player. {err}");
+    }
     Ok(describe(&folder, home))
 }
 
@@ -68,7 +79,7 @@ pub async fn choose_notes_folder(
     else {
         return Ok(None);
     };
-    use_folder(&access, &library, &folder, &home).map(Some)
+    use_folder(&app, &access, &library, &folder, &home).map(Some)
 }
 
 /// Continue with `~/Documents/Anchovy`. Inside the sandbox the user confirms
@@ -82,7 +93,7 @@ pub async fn use_default_notes_folder(
 ) -> Result<Option<NotesFolder>, String> {
     let home = home()?;
     let folder = default_folder(&home);
-    if let Ok(chosen) = use_folder(&access, &library, &folder, &home) {
+    if let Ok(chosen) = use_folder(&app, &access, &library, &folder, &home) {
         return Ok(Some(chosen));
     }
     let Some(confirmed) =
@@ -90,5 +101,5 @@ pub async fn use_default_notes_folder(
     else {
         return Ok(None);
     };
-    use_folder(&access, &library, &confirmed, &home).map(Some)
+    use_folder(&app, &access, &library, &confirmed, &home).map(Some)
 }

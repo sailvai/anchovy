@@ -17,7 +17,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# protocol-asset: the note's player reads the recording through asset://,
+# scoped at runtime to the notes folder only (src/player.rs).
+tauri = { version = "2", features = ["protocol-asset"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Model downloads. native-tls uses the macOS Security framework, so no bundled
@@ -52,6 +54,11 @@ rtrb = "0.4"
 llama-cpp-2 = { version = "=0.1.157", default-features = false, features = ["metal", "mtmd"] }
 # Model output arrives in token pieces that may split a UTF-8 character.
 encoding_rs = "0.8"
+
+[dev-dependencies]
+# Tests check the player's paths against Tauri's own asset scope, which needs
+# a mock app. Test builds only; the app does not have this feature.
+tauri = { version = "2", features = ["test"] }
 
 [profile.release]
 codegen-units = 1
