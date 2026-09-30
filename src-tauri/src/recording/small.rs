@@ -59,37 +59,46 @@ pub struct Finished {
 }
 
 /// Turns the pending WAV into `audio.m4a`, or, if that fails, into
-/// `audio.wav`. Errs only if even the WAV could not be moved; it then stays
-/// where it is, and the next launch tries again.
-pub fn finish(folder: &Path, encoder: &dyn Encoder) -> io::Result<Finished> {
+/// `audio.wav`. `save_state` writes `state.json` for the result; only once it
+/// has does the WAV leave `.anchovy/`, so a recording whose state could not
+/// be saved is still found and finished at the next launch. Errs if encoding
+/// could not start, if `save_state` fails, or if the WAV could not be moved;
+/// the WAV then stays where it is.
+pub fn finish(
+    folder: &Path,
+    encoder: &dyn Encoder,
+    save_state: impl FnOnce(&Finished) -> io::Result<()>,
+) -> io::Result<Finished> {
     let wav = pending_wav(folder);
     let seconds = repair_header(&wav)?;
     let tmp = folder.join(APP_DIR).join(M4A_TMP);
     let m4a = folder.join(Quality::Small.audio_file_name());
     let encoded = encode_checked(encoder, &wav, &tmp, seconds)
         .and_then(|()| fs::rename(&tmp, &m4a).map_err(|err| sentence(&err.to_string())));
-    match encoded {
-        Ok(()) => {
-            // If this fails, the next launch encodes the WAV again and
-            // replaces audio.m4a with the same audio.
-            let _ = fs::remove_file(&wav);
-            Ok(Finished {
-                audio: m4a,
-                failure: None,
-            })
-        }
+    let finished = match encoded {
+        Ok(()) => Finished {
+            audio: m4a,
+            failure: None,
+        },
         Err(reason) => {
             let _ = fs::remove_file(&tmp);
-            let kept = folder.join(Quality::High.audio_file_name());
-            fs::rename(&wav, &kept)?;
-            Ok(Finished {
-                audio: kept,
+            Finished {
+                audio: folder.join(Quality::High.audio_file_name()),
                 failure: Some(format!(
                     "Anchovy couldn't save this recording as M4A, so it kept it as WAV. {reason}"
                 )),
-            })
+            }
         }
+    };
+    save_state(&finished)?;
+    if finished.failure.is_none() {
+        // If this fails, the next launch encodes the WAV again and replaces
+        // audio.m4a with the same audio.
+        let _ = fs::remove_file(&wav);
+    } else {
+        fs::rename(&wav, &finished.audio)?;
     }
+    Ok(finished)
 }
 
 /// Encodes to `tmp`, flushes it to disk, and reads it back: it must hold as
@@ -130,14 +139,14 @@ pub fn recover(folder: &Path, encoder: &dyn Encoder) -> Result<Option<Finished>,
     if !pending_wav(folder).is_file() {
         return Ok(None);
     }
-    // The audio first; then what state.json says about it.
-    let finished = finish(folder, encoder)?;
     let mut state = read_state(folder)?;
     if state.status == Status::Recording {
         state.move_to(Status::Saved)?;
     }
-    state.encoding_failed = finished.failure.clone();
-    write_state(folder, &state)?;
+    let finished = finish(folder, encoder, |done| {
+        state.encoding_failed = done.failure.clone();
+        write_state(folder, &state).map_err(io::Error::other)
+    })?;
     Ok(Some(finished))
 }
 
@@ -238,7 +247,7 @@ mod tests {
         let wav = fs::read(pending_wav(&folder)).unwrap();
         let encoder = CopyEncoder::default();
 
-        let finished = finish(&folder, &encoder).unwrap();
+        let finished = finish(&folder, &encoder, |_| Ok(())).unwrap();
 
         assert_eq!(
             finished,
@@ -263,7 +272,7 @@ mod tests {
             ..CopyEncoder::default()
         };
 
-        let finished = finish(&folder, &encoder).unwrap();
+        let finished = finish(&folder, &encoder, |_| Ok(())).unwrap();
 
         assert_eq!(finished.audio, folder.join("audio.wav"));
         assert_eq!(
@@ -287,7 +296,7 @@ mod tests {
             ..CopyEncoder::default()
         };
 
-        let finished = finish(&folder, &encoder).unwrap();
+        let finished = finish(&folder, &encoder, |_| Ok(())).unwrap();
 
         assert_eq!(finished.audio, folder.join("audio.wav"));
         assert_eq!(
@@ -309,7 +318,7 @@ mod tests {
             ..CopyEncoder::default()
         };
 
-        assert_eq!(finish(&folder, &encoder).unwrap().failure, None);
+        assert_eq!(finish(&folder, &encoder, |_| Ok(())).unwrap().failure, None);
     }
 
     #[test]
@@ -414,7 +423,7 @@ mod tests {
         let dir = TestDir::new();
         let folder = small_recording(&dir, 3.3, true);
 
-        let finished = finish(&folder, &MacEncoder).unwrap();
+        let finished = finish(&folder, &MacEncoder, |_| Ok(())).unwrap();
 
         assert_eq!(finished.failure, None, "{finished:?}");
         let m4a = folder.join("audio.m4a");

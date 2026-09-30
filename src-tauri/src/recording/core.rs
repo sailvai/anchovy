@@ -538,15 +538,34 @@ fn run_writer(
 fn save(
     folder: &Path,
     audio: &Path,
-    mut state: State,
+    state: State,
     finished: Finished,
     stopped: Result<(), RecordingError>,
 ) -> Result<Saved, RecordingError> {
-    state.inputs = recorded_inputs(&finished.levels);
+    let state = mark_saved(folder, &state, &finished.levels)?;
+    report(folder, audio, state, finished, stopped)
+}
+
+/// Writes `state` as Saved, with the inputs that reached the file. The state
+/// passed in is left as it was if that fails.
+fn mark_saved(folder: &Path, state: &State, levels: &Levels) -> Result<State, RecordingError> {
+    let mut state = state.clone();
+    state.inputs = recorded_inputs(levels);
     state
         .move_to(Status::Saved)
         .map_err(|err| RecordingError::Disk(err.to_string()))?;
     write_state(folder, &state).map_err(|err| RecordingError::Disk(err.to_string()))?;
+    Ok(state)
+}
+
+/// The first error, if any, once the recording is Saved.
+fn report(
+    folder: &Path,
+    audio: &Path,
+    state: State,
+    finished: Finished,
+    stopped: Result<(), RecordingError>,
+) -> Result<Saved, RecordingError> {
     if let Some(err) = finished.error {
         return Err(err.into());
     }
@@ -650,7 +669,7 @@ impl Session {
             folder,
             mut audio,
             quality,
-            mut state,
+            state,
             capture,
             stop,
             writer,
@@ -668,21 +687,36 @@ impl Session {
             dropped: 0,
             error: Some(io::Error::other("the writer stopped unexpectedly")),
         });
-        if quality == Quality::Small {
-            match small::finish(&folder, encoder) {
-                Ok(done) => {
-                    finished.progress.bytes = std::fs::metadata(&done.audio)
-                        .map(|meta| meta.len())
-                        .unwrap_or(finished.progress.bytes);
-                    audio = done.audio;
-                    state.encoding_failed = done.failure;
-                }
-                // The WAV stays in `.anchovy/`, and the next launch tries
-                // again.
-                Err(err) => finished.error = finished.error.or(Some(err)),
-            }
+        if quality != Quality::Small {
+            return save(&folder, &audio, state, finished, stopped);
         }
-        save(&folder, &audio, state, finished, stopped)
+        // Small: state.json says Saved before the WAV leaves `.anchovy/`.
+        let levels = finished.levels;
+        let mut written = None;
+        let done = small::finish(&folder, encoder, |done| {
+            let mut next = state.clone();
+            next.encoding_failed = done.failure.clone();
+            let saved = mark_saved(&folder, &next, &levels)
+                .map_err(|err| io::Error::other(err.to_string()))?;
+            written = Some(saved);
+            Ok(())
+        });
+        match done {
+            Ok(done) => {
+                finished.progress.bytes = std::fs::metadata(&done.audio)
+                    .map(|meta| meta.len())
+                    .unwrap_or(finished.progress.bytes);
+                audio = done.audio;
+            }
+            // The WAV stays in `.anchovy/`, and the next launch tries again.
+            Err(err) => finished.error = finished.error.or(Some(err)),
+        }
+        match written {
+            Some(state) => report(&folder, &audio, state, finished, stopped),
+            // Encoding could not start, or state.json could not be written:
+            // try to mark the recording Saved as High would be.
+            None => save(&folder, &audio, state, finished, stopped),
+        }
     }
 }
 
