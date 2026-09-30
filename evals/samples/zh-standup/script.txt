@@ -1,0 +1,6 @@
+Tingting: 早上好，我们开个站会。每人说一下昨天做了什么，今天做什么，有没有卡住的地方。
+Flo (Chinese (China mainland)): 我昨天把设置页面的开关都接上了，今天写测试。没有卡住的地方。
+Reed (Chinese (China mainland)): 我这边卡在签名证书上，申请还没批下来，所以今天没法打包。
+Tingting: 证书的事我来催一下，今天下午之前给你答复。打包先往后放一天。今天你先帮忙看一下设置页面的测试。
+Reed (Chinese (China mainland)): 好的，没问题。
+Tingting: 那就这样，明天同一时间再碰一下。

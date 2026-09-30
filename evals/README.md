@@ -11,9 +11,12 @@ Each folder in `samples/` has:
 
 - `transcript.txt`: the checked transcript. macOS's built-in voice reads it to make the audio, so
   it is exactly what was said. A sample with several speakers has `script.txt` instead: one turn
-  per line, `Voice: text`, and the transcript is the turns' text.
-- `sample.json`: the language (`zh`, `en`, or `mixed`), the voice when there is one, and the
-  checked decisions and action items, worded as they were said.
+  per line, `Voice: text`, and the transcript is the turns' text. The voice is the name `say -v '?'`
+  lists, such as `Flo (Chinese (China mainland))`. The eval stops if a voice is not installed,
+  because `say` would otherwise read with a default voice without saying so.
+- `sample.json`: the language (`zh`, `en`, or `mixed`), the voice when there is one, the
+  background noise when there is some, and the checked decisions and action items, worded as they
+  were said.
 
 The audio is synthetic speech made on the Mac at eval time with `say` and `afconvert`, as 48 kHz
 16-bit mono WAV, the app's recording format (`scripts/eval-audio.mjs`). Turns are joined with 0.6
@@ -29,7 +32,29 @@ turn and turn by turn. It has eight decisions and eight action items across all 
 stretch. Making its audio takes a few minutes, and running it takes several more. Run it alone
 with `npm run eval -- --sample mixed-hour`.
 
-Synthetic speech is clean, so error rates here are better than in real meetings.
+The other samples are made-up meetings of 35 seconds to about 5 minutes, each read by two to four
+voices: 10 Chinese (`zh-*`), 10 English (`en-*`), and 3 short mixed ones (`mixed-sync` switches
+language turn by turn, `mixed-bugs` within a turn, `mixed-launch` both). The Chinese ones use
+Tingting and the mainland Chinese Eloquence voices (Flo, Reed, Eddy, and others), never the Taiwan
+or Hong Kong voices, whose speech may be written in traditional characters. `zh-quarter-review`,
+`en-quarter-review`, and `en-incident` are the long ones.
+
+Some samples have background noise, set in `sample.json` as
+`"noise": { "type": "pink", "snr_db": 20, "seed": 101 }`. `scripts/eval-audio.mjs` makes it
+from the seed, so it is the same on every Mac, and adds it `snr_db` decibels below the speech's
+level (root mean square over the whole clip, turn gaps included). `white` is a hiss, `pink` a room
+or a fan, `brown` a low rumble like air conditioning. The samples use 20 dB (light) and 15 dB
+(clearly audible).
+
+| Sample | Noise |
+| --- | --- |
+| `zh-design-review`, `zh-quarter-review`, `en-design-review`, `en-quarter-review`, `mixed-bugs` | pink, 20 dB |
+| `zh-support`, `en-support` | white, 15 dB |
+| `zh-budget`, `en-vendor` | brown, 15 dB |
+| `mixed-launch` | brown, 20 dB |
+
+Synthetic speech is clean, even with the noise added, so error rates here are better than in real
+meetings.
 
 ## What passes
 

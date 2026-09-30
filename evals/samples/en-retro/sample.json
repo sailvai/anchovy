@@ -1,0 +1,12 @@
+{
+  "language": "en",
+  "decisions": [
+    "Every pull request that changes something visible adds a line to the release notes file.",
+    "The store screenshots get updated in the same week as the release."
+  ],
+  "action_items": [
+    "Karen adds the release notes file to the repository today.",
+    "Tara adds the screenshots to the release checklist.",
+    "Explain the new rule at Monday's meeting."
+  ]
+}

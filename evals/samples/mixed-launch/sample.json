@@ -1,0 +1,13 @@
+{
+  "language": "mixed",
+  "noise": { "type": "brown", "snr_db": 20, "seed": 302 },
+  "decisions": [
+    "The app goes live on the store next Tuesday, and the English post goes out on Tuesday.",
+    "中文文章晚一天，周三发。"
+  ],
+  "action_items": [
+    "婷婷这周五之前把中文文章的初稿给大家看。",
+    "Moira will send the press kit with the latest screenshots on Monday.",
+    "准备 store 上的中文介绍，周一之前发给婷婷检查。"
+  ]
+}

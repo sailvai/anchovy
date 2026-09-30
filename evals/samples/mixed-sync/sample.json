@@ -1,0 +1,11 @@
+{
+  "language": "mixed",
+  "decisions": [
+    "日期跟着系统设置走。",
+    "Follow the system setting for the date in the note title."
+  ],
+  "action_items": [
+    "换行的问题下周一之前修好。",
+    "Daniel will change the date format this week."
+  ]
+}

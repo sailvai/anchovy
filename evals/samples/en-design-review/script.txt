@@ -1,0 +1,6 @@
+Moira: Let's look at the new settings screen. Grace, can you walk us through the changes?
+Tessa: Sure. There are three changes. First, the settings are now in three groups: recording, notes, and models. Second, the storage folder is at the top, because people kept asking where it was. Third, the model sizes are shown next to each model, so people know how much space they need.
+Fred: I like the groups. But the models group is very long. On a small screen you have to scroll a lot.
+Tessa: I could collapse the models that are not downloaded.
+Moira: That sounds good. Let's collapse the models that are not downloaded, and keep the storage folder at the top. Grace, please send the updated design by Friday, and Oliver, please check how long the change will take to build.
+Fred: Will do. I'll have an estimate on Monday.

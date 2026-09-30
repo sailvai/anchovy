@@ -1,0 +1,6 @@
+Samantha: The only item today is the code signing service. Our current plan ends next month and the price is going up by forty percent.
+Reed (English (UK)): I compared two other services. The cheaper one doesn't support notarization, so it's no use to us. The other one costs about the same as our new price.
+Ralph: Then moving isn't worth it. Switching means changing the build scripts and testing everything again.
+Samantha: Agreed. We stay with the current service and renew for one year, not three, so we can look again next year. Aman, please send the renewal form to finance by Friday. Ralph, please put a reminder in the calendar for ten months from now to compare services again.
+Ralph: Okay, I'll add the reminder today.
+Reed (English (UK)): And I'll send the form by Friday.

@@ -1,0 +1,7 @@
+Grandpa (Chinese (China mainland)): 我们来定一下测试工程师的招聘。现在一共有三个候选人进了最后一轮。
+Tingting: 我面了其中两个。第一个经验最多，但是希望全职远程，我们现在还不支持。第二个经验少一点，但是写测试的思路很清楚，也愿意每周来办公室三天。
+Sandy (Chinese (China mainland)): 第三个我面的，基础不错，不过下个月才能给答复，我们等不了那么久。
+Grandpa (Chinese (China mainland)): 那我的意见是给第二个候选人发录用通知。大家觉得呢？
+Tingting: 同意。
+Sandy (Chinese (China mainland)): 我也同意。
+Grandpa (Chinese (China mainland)): 好，那就给第二个候选人发录用通知。婷婷明天把面试记录整理好发给人事，我这周四之前和她谈一下薪资。另外两位，小林负责写邮件感谢他们。

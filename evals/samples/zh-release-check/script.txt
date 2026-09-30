@@ -1,0 +1,10 @@
+Tingting: 明天就要发新版本了，我们最后过一遍检查清单。
+Eddy (Chinese (China mainland)): 自动测试全部通过了。真机上录了三段一小时的会议，笔记都正常生成。
+Shelley (Chinese (China mainland)): 界面截图我都对过了，只有一个地方不一样：深色模式下，设置页面的分隔线看不太清楚。
+Tingting: 这个影响大吗？
+Shelley (Chinese (China mainland)): 不影响使用，只是看起来不太舒服。
+Tingting: 那这次先不改，放到下个版本。发布说明写好了吗？
+Eddy (Chinese (China mainland)): 写好了，但是还没有人看过。
+Tingting: 那我今天下班之前看一遍发布说明。另外，这次更新了摘要模型，要在发布说明里写清楚第一次打开时需要重新下载，大概两个多G。
+Eddy (Chinese (China mainland)): 好，我把这句话加进去。
+Tingting: 那就这么定：明天上午十点发布。发布以后小李盯一下客服邮箱，有问题马上在群里说。

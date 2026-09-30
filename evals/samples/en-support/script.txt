@@ -1,0 +1,7 @@
+Karen: Support emails doubled this week, so let's see what people are writing about.
+Rishi: About half of them ask where the notes are saved. The next biggest group says the microphone stopped working after a system update. And a few people say that recordings longer than two hours never get a note.
+Moira: I looked into the two hour problem. The Mac runs out of memory and the summary model fails to load. But the app only says failed. It doesn't say why.
+Karen: That's serious. When it fails, the app has to say why and what to do next. Moira, can you fix the message by next Wednesday?
+Moira: Yes, by next Wednesday.
+Karen: For the notes folder, let's add a show in Finder button to the settings screen. Rishi, can you build that this week? And for the microphone, I'll write a help page explaining how to turn the permission back on. I'll publish it tomorrow.
+Rishi: Sure, the button will be done this week.
