@@ -1175,6 +1175,66 @@ mod tests {
         assert_eq!(state.encoding_failed, None);
     }
 
+    /// A folder where `state.tmp` should be, so the next `write_state` in
+    /// this recording fails.
+    fn block_state_writes(folder: &Path) {
+        std::fs::create_dir(folder.join(".anchovy/state.tmp")).unwrap();
+    }
+
+    fn unblock_state_writes(folder: &Path) {
+        std::fs::remove_dir(folder.join(".anchovy/state.tmp")).unwrap();
+    }
+
+    #[test]
+    fn a_small_recording_whose_state_cannot_be_saved_keeps_its_wav_for_the_next_launch() {
+        for encoder in [
+            CopyEncoder::default(),
+            CopyEncoder {
+                fail: Some("No AAC encoder.".into()),
+                ..CopyEncoder::default()
+            },
+        ] {
+            let dir = TestDir::new();
+            let recorder = Recorder::new(Arc::new(encoder));
+            let small = RecordingOptions {
+                input_device: None,
+                quality: Quality::Small,
+            };
+            let recording = recorder
+                .start(
+                    dir.path(),
+                    START,
+                    Source::Manual,
+                    small,
+                    |_| Ok(fake_capture(true, Arc::new(AtomicBool::new(false)))),
+                    TICK,
+                    |_| {},
+                )
+                .unwrap();
+            thread::sleep(Duration::from_millis(100));
+            block_state_writes(&recording.folder);
+
+            assert!(matches!(recorder.stop(), Err(RecordingError::Disk(_))));
+
+            // state.json still says Recording, so the WAV must still be where
+            // the next launch looks for it.
+            assert_eq!(
+                read_state(&recording.folder).unwrap().status,
+                Status::Recording
+            );
+            assert!(recording.folder.join(".anchovy/recording.wav").is_file());
+
+            unblock_state_writes(&recording.folder);
+            let encoder = CopyEncoder::default();
+            small::recover(&recording.folder, &encoder)
+                .unwrap()
+                .unwrap();
+            assert_eq!(read_state(&recording.folder).unwrap().status, Status::Saved);
+            assert!(recording.folder.join("audio.m4a").is_file());
+            assert!(!recording.folder.join(".anchovy/recording.wav").exists());
+        }
+    }
+
     #[test]
     fn a_small_recording_whose_encode_fails_is_saved_as_wav_with_the_reason() {
         let dir = TestDir::new();

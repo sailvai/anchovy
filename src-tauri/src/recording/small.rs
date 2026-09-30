@@ -365,6 +365,23 @@ mod tests {
     }
 
     #[test]
+    fn a_launch_that_cannot_save_the_state_keeps_the_wav_for_the_next_one() {
+        let dir = TestDir::new();
+        let folder = small_recording(&dir, 1.0, false);
+        fs::create_dir(folder.join(APP_DIR).join("state.tmp")).unwrap();
+        let encoder = CopyEncoder::default();
+
+        assert!(recover(&folder, &encoder).is_err());
+
+        assert_eq!(read_state(&folder).unwrap().status, Status::Recording);
+        assert!(pending_wav(&folder).is_file());
+        fs::remove_dir(folder.join(APP_DIR).join("state.tmp")).unwrap();
+        recover(&folder, &encoder).unwrap().unwrap();
+        assert_eq!(read_state(&folder).unwrap().status, Status::Saved);
+        assert_eq!(names(&folder), [".anchovy", "audio.m4a"]);
+    }
+
+    #[test]
     fn without_a_pending_wav_launch_changes_nothing() {
         let dir = TestDir::new();
         let folder = create_recording_folder(dir.path(), &START).unwrap();
