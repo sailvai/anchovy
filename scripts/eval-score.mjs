@@ -124,6 +124,17 @@ export function compareWithBaseline(current, baseline) {
   return failures;
 }
 
+// A meeting in both languages is scored by characters and words together
+// and held to its own baseline, with the same 2 points.
+export function compareSampleError(id, rate, baseline) {
+  if (rate > baseline.error_rate + ALLOWED_RISE + 1e-9) {
+    return [
+      `${id}: error rate ${percent(rate)} is more than 2 points above the baseline ${percent(baseline.error_rate)}.`,
+    ];
+  }
+  return [];
+}
+
 // Time and memory for the hour may be at most 20% worse than the baseline.
 export const ALLOWED_COST = 1.2;
 

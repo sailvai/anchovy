@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   checkJoins,
   compareCost,
+  compareSampleError,
   compareWithBaseline,
   covered,
   matches,
@@ -281,5 +282,17 @@ describe("matches", () => {
         expect(j).toBeGreaterThan(pairs[n][1]);
       });
     }
+  });
+});
+
+describe("mixed error rate", () => {
+  test("up to two points above the sample's baseline passes", () => {
+    expect(compareSampleError("mixed-hour", 0.066, { error_rate: 0.046 })).toEqual([]);
+  });
+
+  test("more than two points above fails", () => {
+    expect(compareSampleError("mixed-hour", 0.067, { error_rate: 0.046 })).toEqual([
+      "mixed-hour: error rate 6.7% is more than 2 points above the baseline 4.6%.",
+    ]);
   });
 });

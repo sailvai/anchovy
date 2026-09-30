@@ -38,6 +38,8 @@ path runs on the real model too. Short samples use 120-token chunks. `mixed-hour
 an 8 GB Mac gets; on a Mac with 16 GB or more its transcript fits in one chunk.
 
 - Chinese character error rate and English word error rate stay within 2 points of the baseline.
+- The `mixed-hour` error rate, scored by Chinese characters and English words together, stays
+  within 2 points of its own baseline.
 - Every summary is valid JSON (the pipeline retries once; the run shows how many answers it
   took).
 - Every decision and action item is supported by the transcript: at least 60% of its content
@@ -52,7 +54,7 @@ an 8 GB Mac gets; on a Mac with 16 GB or more its transcript fits in one chunk.
   more than 20% over its baseline.
 
 How many checked decisions and action items the output covers is printed for information, and so
-are the time and memory of the short samples and the `mixed-hour` error rate; none of these fails
+are the time and memory of the short samples; none of these fails
 the run.
 
 The first passing run writes `baseline.json`. A sample new to the baseline is added on its first

@@ -11,9 +11,11 @@
 // evals/baseline.json, every summary valid JSON, every decision and action
 // item supported by the transcript, every summary in the language spoken, no
 // words lost or repeated where transcription windows join, and the small-chunk
-// run really chunked and merged. For the hour-long sample, transcription time,
-// summary time, and peak memory within 20% of the baseline. The first passing
-// run writes the baseline; a sample new to it is added on its first pass.
+// run really chunked and merged. A sample in both languages keeps its error
+// rate within 2 points of its baseline. For the hour-long sample,
+// transcription time, summary time, and peak memory within 20% of the
+// baseline. The first passing run writes the baseline; a sample new to it is
+// added on its first pass.
 //
 //   npm run eval                      run every sample
 //   npm run eval -- --sample <id>     run one sample (repeatable)
@@ -26,6 +28,7 @@ import { makeClip, parseScript } from "./eval-audio.mjs";
 import {
   checkJoins,
   compareCost,
+  compareSampleError,
   compareWithBaseline,
   covered,
   errorRate,
@@ -278,6 +281,12 @@ function main() {
     failures.push(...compareWithBaseline(current, baseline));
     for (const r of results.filter((r) => r.timed && r.ok && baseline.samples[r.id])) {
       failures.push(...compareCost(r.id, r, baseline.samples[r.id]));
+    }
+    for (const r of results.filter(
+      (r) => r.language === "mixed" && r.transcription && baseline.samples[r.id],
+    )) {
+      const rate = r.transcription.edits / r.transcription.length;
+      failures.push(...compareSampleError(r.id, rate, baseline.samples[r.id]));
     }
     const added = passed.filter((r) => !baseline.samples[r.id]);
     if (failures.length === 0 && added.length) {
