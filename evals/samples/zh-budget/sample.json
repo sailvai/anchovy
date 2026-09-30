@@ -2,7 +2,7 @@
   "language": "zh",
   "noise": { "type": "brown", "snr_db": 15, "seed": 103 },
   "decisions": [
-    "测试设备买三台，两台八个G的，一台二十四个G的。",
+    "测试设备买三台，两台小内存的，一台大内存的。",
     "设计软件把没人用的那个账号停掉。"
   ],
   "action_items": [

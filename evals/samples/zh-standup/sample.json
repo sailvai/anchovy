@@ -1,5 +1,6 @@
 {
   "language": "zh",
+  "summary_chunk_tokens": 60,
   "decisions": [
     "打包先往后放一天。"
   ],

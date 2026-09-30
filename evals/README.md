@@ -36,7 +36,9 @@ The other samples are made-up meetings of 35 seconds to about 5 minutes, each re
 voices: 10 Chinese (`zh-*`), 10 English (`en-*`), and 3 short mixed ones (`mixed-sync` switches
 language turn by turn, `mixed-bugs` within a turn, `mixed-launch` both). The Chinese ones use
 Tingting and the mainland Chinese Eloquence voices (Flo, Reed, Eddy, and others), never the Taiwan
-or Hong Kong voices, whose speech may be written in traditional characters. `zh-quarter-review`,
+or Hong Kong voices, whose speech may be written in traditional characters. The Eloquence Chinese
+voices misread Latin letters and English words, so their turns have none; Tingting reads the English
+in Chinese and mixed samples. `zh-quarter-review`,
 `en-quarter-review`, and `en-incident` are the long ones.
 
 Some samples have background noise, set in `sample.json` as
@@ -59,7 +61,8 @@ meetings.
 ## What passes
 
 Each sample runs twice: as the app would, and with small summary chunks so the chunk-and-merge
-path runs on the real model too. Short samples use 120-token chunks. `mixed-hour` uses 8,000, what
+path runs on the real model too. Short samples use 120-token chunks; `zh-offsite`, `zh-standup`,
+and `mixed-bugs` fit in one of those, so they set 60 in `sample.json`. `mixed-hour` uses 8,000, what
 an 8 GB Mac gets; on a Mac with 16 GB or more its transcript fits in one chunk.
 
 - Chinese character error rate and English word error rate stay within 2 points of the baseline.
