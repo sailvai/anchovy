@@ -79,6 +79,10 @@ pub async fn choose_notes_folder(
     else {
         return Ok(None);
     };
+    // The meeting notification can start a recording while the panel is open.
+    if recorder.is_recording() {
+        return Err("Stop recording before changing the notes folder.".into());
+    }
     use_folder(&app, &access, &library, &folder, &home).map(Some)
 }
 

@@ -215,3 +215,19 @@ test("cancelling the folder panel changes nothing", async () => {
   await waitFor(() => expect(screen.getByRole("button", { name: "Change…" })).toBeEnabled());
   expect(changed).not.toHaveBeenCalled();
 });
+
+test("two changes made before the first is saved both stay saved", async () => {
+  const calls = fakeSettings();
+  renderScreen();
+  const toggle = await screen.findByRole("switch", { name: "Generate notes automatically" });
+
+  fireEvent.click(toggle);
+  fireEvent.click(screen.getByRole("radio", { name: /^Small/ }));
+
+  await waitFor(() => expect(updates(calls)).toHaveLength(2));
+  expect(updates(calls)[1]).toEqual({
+    ...defaults,
+    generate_notes_automatically: false,
+    recording_quality: "small",
+  });
+});

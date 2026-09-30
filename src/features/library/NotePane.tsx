@@ -69,10 +69,12 @@ export function NotePane({
   const [models, setModels] = useState<ModelView[] | null>(null);
   const [automatic, setAutomatic] = useState<boolean | null>(null);
   const noteState = loaded.folder === folder ? loaded.state : null;
-  const [audio, setAudio] = useState<{ folder: string; audio: RecordingAudio | null }>({
-    folder,
-    audio: null,
-  });
+  const [audio, setAudio] = useState<{
+    folder: string;
+    audio: RecordingAudio | null;
+    // Why the audio cannot be played, when Rust says so.
+    error?: string;
+  }>({ folder, audio: null });
   const beingRecorded = status === "recording";
 
   // The player, for any recording with audio, except while it is recorded.
@@ -81,13 +83,14 @@ export function NotePane({
     let current = true;
     recordingAudio(folder).then(
       (found) => current && setAudio({ folder, audio: found }),
-      () => current && setAudio({ folder, audio: null }),
+      (err) => current && setAudio({ folder, audio: null, error: message(err) }),
     );
     return () => {
       current = false;
     };
   }, [folder, beingRecorded]);
   const playable = !beingRecorded && audio.folder === folder ? audio.audio : null;
+  const unplayable = !beingRecorded && audio.folder === folder ? audio.error : undefined;
 
   useEffect(() => {
     if (status !== "ready") return;
@@ -204,6 +207,11 @@ export function NotePane({
       )}
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
         <div className="max-w-[620px]">
+          {unplayable && (
+            <p className="mb-6 flex h-11 items-center rounded-lg border border-line px-4 text-[12px] text-muted">
+              {unplayable}
+            </p>
+          )}
           {playable && (
             <div className="mb-6">
               <Player key={playable.path} audio={playable} seconds={recording.duration_seconds} />

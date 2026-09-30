@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { listInputDevices, type InputDevice } from "../../ipc/recording";
 import { getSettings, updateSettings, type Quality, type Settings } from "../../ipc/settings";
 import { chooseNotesFolder, type NotesFolder } from "../../ipc/setup";
@@ -38,11 +38,18 @@ export function SettingsScreen({
   const [devices, setDevices] = useState<InputDevice[]>([]);
   const [choosing, setChoosing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The settings with every change so far, saved or on its way, so a second
+  // change made before the first is saved keeps the first.
+  const latest = useRef<Settings | null>(null);
 
   useEffect(() => {
     let current = true;
     getSettings().then(
-      (saved) => current && setSettings(saved),
+      (saved) => {
+        if (!current) return;
+        latest.current = saved;
+        setSettings(saved);
+      },
       (err) => current && setError(message(err)),
     );
     listInputDevices().then(
@@ -55,14 +62,25 @@ export function SettingsScreen({
   }, []);
 
   function save(change: Partial<Settings>) {
-    if (!settings) return;
+    const before = latest.current;
+    if (!before) return;
+    const next = { ...before, ...change };
+    latest.current = next;
+    setSettings(next);
     setError(null);
-    updateSettings({ ...settings, ...change }).then(
+    updateSettings(next).then(
       (saved) => {
-        setSettings(saved);
+        if (latest.current === next) setSettings(saved);
         onSaved?.(saved);
       },
-      (err) => setError(message(err)),
+      (err) => {
+        // Not saved: back to what was there before this change.
+        if (latest.current === next) {
+          latest.current = before;
+          setSettings(before);
+        }
+        setError(message(err));
+      },
     );
   }
 

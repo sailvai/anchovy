@@ -43,7 +43,6 @@ impl AssetScope for tauri::scope::fs::Scope {
     }
 }
 
-/// Moves the scope from the `old` notes folder, if any, to `new`.
 /// Moves the scope from the `old` notes folder, if any, to `new`. An old
 /// folder inside the new one is part of it and stays open.
 pub fn follow_notes_folder(

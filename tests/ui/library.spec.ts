@@ -161,6 +161,9 @@ for (const colorScheme of ["light", "dark"] as const) {
   test(`empty library, ${colorScheme}`, async ({ page }) => {
     await open(page, colorScheme, []);
     await expect(page.getByText("No recordings yet")).toBeVisible();
+    // The sources have loaded, as in the mock.
+    await expect(page.getByText("Will be recorded")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Record" }).first()).toBeEnabled();
     await snap(page, `library-empty-${colorScheme}.png`);
   });
 

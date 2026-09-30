@@ -166,3 +166,26 @@ test("a recording without audio has no player", async () => {
   expect(asked).toEqual([folder]);
   expect(screen.queryByRole("group", { name: "Audio" })).not.toBeInTheDocument();
 });
+
+test("audio the notes folder cannot serve says why instead of a player", async () => {
+  mockIPC(
+    (cmd) => {
+      if (cmd === "recording_audio")
+        throw "Quit and reopen Anchovy to play recordings in this notes folder.";
+      if (cmd === "list_models") return { memory_bytes: 16 * 1024 ** 3, models: [] };
+      if (cmd === "get_settings")
+        return {
+          input_device: null,
+          recording_quality: "high",
+          generate_notes_automatically: true,
+        };
+    },
+    { shouldMockEvents: true },
+  );
+  renderNote("saved");
+
+  expect(
+    await screen.findByText("Quit and reopen Anchovy to play recordings in this notes folder."),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Play" })).not.toBeInTheDocument();
+});
