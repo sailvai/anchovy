@@ -9,13 +9,17 @@
 //
 // Pass: Chinese character error and English word error within 2 points of
 // evals/baseline.json, every summary valid JSON, every decision and action
-// item supported by the transcript, every summary in the language spoken, no
+// item supported by the transcript and none of them a sample's not-items
+// (things said that were never agreed or taken on), every summary in the
+// language spoken, no
 // words lost or repeated where transcription windows join, and the small-chunk
 // run really chunked and merged. A sample in both languages keeps its error
 // rate within 2 points of its baseline. For the hour-long sample,
 // transcription time, summary time, and peak memory within 20% of the
 // baseline. The first passing run writes the baseline; a sample new to it is
-// added on its first pass.
+// added on its first pass. In a mixed sample an unsupported item is a
+// warning, not a failure: the model translates items between the two
+// languages, and a word-overlap check cannot see a faithful translation.
 //
 // Small quality (plan step 8): one short sample runs again as an M4A that
 // afconvert makes from its WAV at eval time. Its error rate is shown next to
@@ -38,12 +42,11 @@ import {
   covered,
   errorRate,
   JOIN_LIMIT,
+  judgeItems,
   languageOf,
   megabytes as mb,
   percent,
   summaryCalls,
-  support,
-  SUPPORT_THRESHOLD,
 } from "./eval-score.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -101,7 +104,13 @@ function loadSamples(only) {
 }
 
 function score(sample, output, { scoreTranscript, mustChunk }) {
-  const result = { id: sample.id, language: sample.language, ok: output.ok, problems: [] };
+  const result = {
+    id: sample.id,
+    language: sample.language,
+    ok: output.ok,
+    problems: [],
+    warnings: [],
+  };
   if (!output.ok) {
     result.problems.push(`No note: ${output.error}`);
     return result;
@@ -140,17 +149,10 @@ function score(sample, output, { scoreTranscript, mustChunk }) {
     ...report.summary.decisions.map((text) => ({ kind: "decision", text })),
     ...report.summary.action_items.map((text) => ({ kind: "action item", text })),
   ];
-  result.items = items.map((item) => ({
-    ...item,
-    support: support(item.text, sample.transcript, sample.language),
-  }));
-  for (const item of result.items) {
-    if (item.support < SUPPORT_THRESHOLD) {
-      result.problems.push(
-        `Unsupported ${item.kind} (${percent(item.support)} said): ${item.text}`,
-      );
-    }
-  }
+  const judged = judgeItems(items, sample);
+  result.items = judged.items;
+  result.problems.push(...judged.problems);
+  result.warnings.push(...judged.warnings);
   const written = [report.summary.summary, ...items.map((item) => item.text)].join(" ");
   result.summaryLanguage = languageOf(written);
   // A meeting in both languages may be summarized in either (plan step 6b).
@@ -301,6 +303,7 @@ function main() {
         .join(" | "),
     );
     for (const problem of r.problems) console.log(`  FAIL ${problem}`);
+    for (const warning of r.warnings) console.log(`  WARN ${warning}`);
   }
 
   const failures = results.flatMap((r) => r.problems.map((p) => `${r.id} (${r.variant}): ${p}`));
@@ -315,6 +318,7 @@ function main() {
       `${M4A_SAMPLE} (m4a) | not run: the WAV run of ${M4A_SAMPLE} did not run or failed`,
     );
   }
+  const warnings = results.flatMap((r) => r.warnings.map((w) => `${r.id} (${r.variant}): ${w}`));
   console.log("\n=== Totals");
   console.log(
     `Chinese character error rate: ${current.chinese_cer == null ? "no sample run" : percent(current.chinese_cer)}`,
@@ -322,6 +326,10 @@ function main() {
   console.log(
     `English word error rate:      ${current.english_wer == null ? "no sample run" : percent(current.english_wer)}`,
   );
+  console.log(
+    `Warnings: ${warnings.length} unsupported item(s) in mixed samples (known mixed-language limit, not failures)`,
+  );
+  for (const warning of warnings) console.log(`  ${warning}`);
 
   const env = machine();
   const passed = results.filter((r) => r.variant === "app" && r.ok);
