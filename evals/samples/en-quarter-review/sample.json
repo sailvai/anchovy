@@ -12,5 +12,11 @@
     "Moira writes help pages for the ten most common questions within two weeks.",
     "Rishi brings a proposal for starting with a smaller model by next Tuesday.",
     "Add evaluation samples, at least ten in Chinese and ten in English."
+  ],
+  "not_items": [
+    "On my home connection, both models took about fifteen minutes.",
+    "I'm less sure about taking turns.",
+    "Engineers might answer in a way that is too technical.",
+    "For the download, could people start with a smaller model?"
   ]
 }

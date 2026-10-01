@@ -8,5 +8,10 @@
     "Karen adds the release notes file to the repository today.",
     "Tara adds the screenshots to the release checklist.",
     "Explain the new rule at Monday's meeting."
+  ],
+  "not_items": [
+    "we shipped on the day we planned, and nobody worked over the weekend.",
+    "the release notes were written the night before, and two features were missing from them.",
+    "The screenshots in the store were also out of date for a week."
   ]
 }

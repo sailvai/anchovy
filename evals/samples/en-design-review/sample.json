@@ -9,5 +9,6 @@
   "action_items": [
     "Grace sends the updated design by Friday.",
     "Oliver checks how long the change will take to build and has an estimate on Monday."
-  ]
+  ],
+  "not_items": ["But the models group is very long. On a small screen you have to scroll a lot."]
 }

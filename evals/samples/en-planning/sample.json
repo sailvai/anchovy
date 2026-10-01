@@ -11,5 +11,10 @@
     "Priya updates the design by Thursday.",
     "Daniel writes the first draft of the help page next week.",
     "Tom places the order for the test Mac today."
+  ],
+  "not_items": [
+    "We get about forty emails a week, and most of them ask where the notes are saved.",
+    "Finance approved the smaller one only.",
+    "We still don't have a date."
   ]
 }

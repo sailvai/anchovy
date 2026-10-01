@@ -4,5 +4,10 @@
     "日期跟着系统设置走。",
     "Follow the system setting for the date in the note title."
   ],
-  "action_items": ["换行的问题下周一之前修好。", "Daniel will change the date format this week."]
+  "action_items": ["换行的问题下周一之前修好。", "Daniel will change the date format this week."],
+  "not_items": [
+    "我们先用中文说一下，然后请 Daniel 讲他那边的情况。",
+    "这周的主要问题是笔记同步到别的软件的时候，格式会乱。",
+    "On my side, users in London are asking for the date to be written the British way in the note title."
+  ]
 }

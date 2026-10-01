@@ -10,5 +10,9 @@
     "crash on launch 这个 bug 优先级最高，这周必须修。",
     "时间戳的问题放到 next release，这次先不管。"
   ],
-  "action_items": ["Karen 来 fix，周四之前给一个 build。"]
+  "action_items": ["Karen 来 fix，周四之前给一个 build。"],
+  "not_items": [
+    "It happens when the notes folder is on an external drive that isn't connected.",
+    "第二个是转写里的时间戳偶尔差三秒，这个不影响使用。"
+  ]
 }

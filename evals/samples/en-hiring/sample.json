@@ -5,5 +5,9 @@
     "Tara sends her interview notes to the recruiter today.",
     "Call the second candidate on Thursday to talk about the salary.",
     "Samantha writes to the other two candidates and thanks them."
+  ],
+  "not_items": [
+    "The first one has the most experience, but she can only start in March.",
+    "He was friendly, but he had never used a Mac, and this job is all about Mac support."
   ]
 }
