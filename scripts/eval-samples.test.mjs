@@ -62,6 +62,13 @@ describe.each(readdirSync(samplesDir).sort())("eval sample %s", (id) => {
     expect(clashes).toEqual([]);
   });
 
+  test("a copied not-item is a warning, never a failure", () => {
+    if (sample.not_items === undefined) return;
+    const copied = [{ kind: "decision", text: sample.not_items[0] }];
+    const { problems, notItems } = judgeItems(copied, sample);
+    expect({ problems, notItems: notItems.length }).toEqual({ problems: [], notItems: 1 });
+  });
+
   test("an unsupported item fails the run, except in a mixed sample", () => {
     const made_up = [{ kind: "action item", text: "Xavier orders twelve violins 鲸鱼" }];
     const { problems, warnings } = judgeItems(made_up, sample);

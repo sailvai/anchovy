@@ -151,25 +151,26 @@ describe("judging items", () => {
     { kind: "action item", text: "Test on an older Mac" },
   ];
 
-  test("unsupported items and not-items fail a Chinese or English sample", () => {
-    const { problems, warnings } = judgeItems(items, sample("en"));
+  const limit = "(known limit: status reports and problems listed as decisions or tasks)";
+  const notItemWarnings = [
+    `Not a decision (said in the meeting, never agreed or taken on): "Fine with me." matches "Fine with me." ${limit}`,
+    `Not an action item (said in the meeting, never agreed or taken on): "Test on an older Mac" matches "I think we should test on an older Mac." ${limit}`,
+  ];
+
+  test("unsupported items fail a Chinese or English sample, and not-items warn", () => {
+    const { problems, warnings, notItems } = judgeItems(items, sample("en"));
+    expect(problems).toEqual(["Unsupported action item (0.0% said): Tom buys three new monitors"]);
     expect(warnings).toEqual([]);
-    expect(problems).toEqual([
-      'Not a decision (said in the meeting, never agreed or taken on): "Fine with me." matches "Fine with me."',
-      "Unsupported action item (0.0% said): Tom buys three new monitors",
-      'Not an action item (said in the meeting, never agreed or taken on): "Test on an older Mac" matches "I think we should test on an older Mac."',
-    ]);
+    expect(notItems).toEqual(notItemWarnings);
   });
 
-  test("in a mixed sample unsupported items are warnings, and not-items still fail", () => {
-    const { problems, warnings } = judgeItems(items, sample("mixed"));
+  test("in a mixed sample unsupported items and not-items both warn", () => {
+    const { problems, warnings, notItems } = judgeItems(items, sample("mixed"));
+    expect(problems).toEqual([]);
     expect(warnings).toEqual([
       "Unsupported action item (0.0% said): Tom buys three new monitors (known mixed-language limit)",
     ]);
-    expect(problems).toEqual([
-      'Not a decision (said in the meeting, never agreed or taken on): "Fine with me." matches "Fine with me."',
-      'Not an action item (said in the meeting, never agreed or taken on): "Test on an older Mac" matches "I think we should test on an older Mac."',
-    ]);
+    expect(notItems).toEqual(notItemWarnings);
   });
 
   test("each item keeps its support for the report", () => {
