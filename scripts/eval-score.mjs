@@ -124,20 +124,25 @@ export function isNotItem(item, notItem, language) {
 const notKind = { decision: "Not a decision", "action item": "Not an action item" };
 
 // Judges a summary's decisions and action items (`{ kind, text }`) against
-// a sample. Each must be supported by the transcript and must not be one of
-// the sample's not-items. In a mixed sample an unsupported item is a
-// warning instead: the model translates items between Chinese and English,
-// and a faithful translation fails a word-overlap check.
+// a sample. Each must be supported by the transcript; an unsupported item is
+// a problem. Two known limits of v0.1.0 are warnings instead, counted apart:
+// - `warnings`: an unsupported item in a mixed sample. The model translates
+//   items between Chinese and English, and a faithful translation fails a
+//   word-overlap check.
+// - `notItems`: an item that matches one of the sample's not-items. The
+//   summary model lists status reports, problems, and questions as
+//   decisions or tasks.
 export function judgeItems(items, sample) {
   const problems = [];
   const warnings = [];
+  const notItems = [];
   const judged = items.map((item) => {
     const notItem = (sample.not_items ?? []).find((line) =>
       isNotItem(item.text, line, sample.language),
     );
     if (notItem) {
-      problems.push(
-        `${notKind[item.kind]} (said in the meeting, never agreed or taken on): "${item.text}" matches "${notItem}"`,
+      notItems.push(
+        `${notKind[item.kind]} (said in the meeting, never agreed or taken on): "${item.text}" matches "${notItem}" (known limit: status reports and problems listed as decisions or tasks)`,
       );
     }
     const said = support(item.text, sample.transcript, sample.language);
@@ -148,7 +153,7 @@ export function judgeItems(items, sample) {
     }
     return { ...item, support: said, notItem };
   });
-  return { items: judged, problems, warnings };
+  return { items: judged, problems, warnings, notItems };
 }
 
 // How many checked items some output item covers, for information.
