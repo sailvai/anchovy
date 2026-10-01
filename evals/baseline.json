@@ -12,6 +12,45 @@
   "chinese_cer": 0.004,
   "english_wer": 0.01834862385321101,
   "samples": {
+    "en-design-review": {
+      "error_rate": 0.007042253521126761,
+      "seconds": {
+        "audio": 54.878125,
+        "transcribe": 4.03319225,
+        "summarize": 3.555223416
+      },
+      "memory": {
+        "peak_footprint": 1006832592,
+        "footprint_before": 6242712,
+        "footprint_after_unload": 88031928
+      }
+    },
+    "en-hiring": {
+      "error_rate": 0,
+      "seconds": {
+        "audio": 49.2660625,
+        "transcribe": 3.773223584,
+        "summarize": 3.7066555
+      },
+      "memory": {
+        "peak_footprint": 1002474448,
+        "footprint_before": 5931416,
+        "footprint_after_unload": 87917240
+      }
+    },
+    "en-incident": {
+      "error_rate": 0.020989505247376312,
+      "seconds": {
+        "audio": 236.2540625,
+        "transcribe": 17.937521,
+        "summarize": 7.213251792
+      },
+      "memory": {
+        "peak_footprint": 1137609944,
+        "footprint_before": 17973680,
+        "footprint_after_unload": 99517136
+      }
+    },
     "en-planning": {
       "error_rate": 0.015544041450777202,
       "seconds": {
@@ -23,6 +62,71 @@
         "peak_footprint": 1005964288,
         "footprint_before": 7012808,
         "footprint_after_unload": 88851176
+      }
+    },
+    "en-quarter-review": {
+      "error_rate": 0.0023952095808383233,
+      "seconds": {
+        "audio": 292.0663125,
+        "transcribe": 32.953493875,
+        "summarize": 14.107579167
+      },
+      "memory": {
+        "peak_footprint": 1342606696,
+        "footprint_before": 21512600,
+        "footprint_after_unload": 102646432
+      }
+    },
+    "en-retro": {
+      "error_rate": 0.005747126436781609,
+      "seconds": {
+        "audio": 60.88725,
+        "transcribe": 7.632558416,
+        "summarize": 5.947683292
+      },
+      "memory": {
+        "peak_footprint": 1003490256,
+        "footprint_before": 6717872,
+        "footprint_after_unload": 88081056
+      }
+    },
+    "en-standup": {
+      "error_rate": 0.030927835051546393,
+      "seconds": {
+        "audio": 35.60325,
+        "transcribe": 4.5964420409999995,
+        "summarize": 5.037249375
+      },
+      "memory": {
+        "peak_footprint": 999623632,
+        "footprint_before": 5095832,
+        "footprint_after_unload": 86803152
+      }
+    },
+    "en-support": {
+      "error_rate": 0.012422360248447204,
+      "seconds": {
+        "audio": 55.2241875,
+        "transcribe": 6.757387208,
+        "summarize": 9.1897535
+      },
+      "memory": {
+        "peak_footprint": 1002687416,
+        "footprint_before": 6341016,
+        "footprint_after_unload": 84951712
+      }
+    },
+    "en-vendor": {
+      "error_rate": 0.015625,
+      "seconds": {
+        "audio": 46.993,
+        "transcribe": 5.569244666,
+        "summarize": 7.363820833
+      },
+      "memory": {
+        "peak_footprint": 1000426448,
+        "footprint_before": 5833112,
+        "footprint_after_unload": 84329120
       }
     },
     "en-weekly": {
@@ -38,6 +142,19 @@
         "footprint_after_unload": 84787920
       }
     },
+    "mixed-bugs": {
+      "error_rate": 0.04424778761061947,
+      "seconds": {
+        "audio": 34.232125,
+        "transcribe": 4.318695625,
+        "summarize": 7.318413541
+      },
+      "memory": {
+        "peak_footprint": 1000049616,
+        "footprint_before": 4997528,
+        "footprint_after_unload": 86688440
+      }
+    },
     "mixed-hour": {
       "error_rate": 0.0459348900630646,
       "seconds": {
@@ -51,6 +168,84 @@
         "footprint_after_unload": 297911160
       }
     },
+    "mixed-launch": {
+      "error_rate": 0.006134969325153374,
+      "seconds": {
+        "audio": 47.8709375,
+        "transcribe": 7.013068542,
+        "summarize": 11.571593374999999
+      },
+      "memory": {
+        "peak_footprint": 1000672184,
+        "footprint_before": 5849496,
+        "footprint_after_unload": 84394656
+      }
+    },
+    "mixed-sync": {
+      "error_rate": 0,
+      "seconds": {
+        "audio": 44.305125,
+        "transcribe": 6.408588209,
+        "summarize": 6.532037167
+      },
+      "memory": {
+        "peak_footprint": 1000983504,
+        "footprint_before": 5620120,
+        "footprint_after_unload": 84214456
+      }
+    },
+    "zh-budget": {
+      "error_rate": 0.028169014084507043,
+      "seconds": {
+        "audio": 52.9309375,
+        "transcribe": 7.224876417,
+        "summarize": 12.92850375
+      },
+      "memory": {
+        "peak_footprint": 1002146744,
+        "footprint_before": 6226328,
+        "footprint_after_unload": 84771488
+      }
+    },
+    "zh-design-review": {
+      "error_rate": 0.0273972602739726,
+      "seconds": {
+        "audio": 56.3019375,
+        "transcribe": 7.460896708,
+        "summarize": 8.365496459
+      },
+      "memory": {
+        "peak_footprint": 1004030904,
+        "footprint_before": 6390168,
+        "footprint_after_unload": 85017248
+      }
+    },
+    "zh-hiring": {
+      "error_rate": 0.0048543689320388345,
+      "seconds": {
+        "audio": 51.755125,
+        "transcribe": 6.910425042,
+        "summarize": 6.432404709
+      },
+      "memory": {
+        "peak_footprint": 1001999336,
+        "footprint_before": 6095256,
+        "footprint_after_unload": 84689616
+      }
+    },
+    "zh-offsite": {
+      "error_rate": 0,
+      "seconds": {
+        "audio": 34.73175,
+        "transcribe": 4.810376042,
+        "summarize": 7.030201333
+      },
+      "memory": {
+        "peak_footprint": 999345080,
+        "footprint_before": 5046680,
+        "footprint_after_unload": 86524576
+      }
+    },
     "zh-product": {
       "error_rate": 0.006896551724137931,
       "seconds": {
@@ -62,6 +257,58 @@
         "peak_footprint": 1007209496,
         "footprint_before": 7340488,
         "footprint_after_unload": 89146088
+      }
+    },
+    "zh-quarter-review": {
+      "error_rate": 0.025223759153783564,
+      "seconds": {
+        "audio": 312.57,
+        "transcribe": 43.805544125,
+        "summarize": 15.397185667
+      },
+      "memory": {
+        "peak_footprint": 1020545976,
+        "footprint_before": 22790552,
+        "footprint_after_unload": 101450424
+      }
+    },
+    "zh-release-check": {
+      "error_rate": 0,
+      "seconds": {
+        "audio": 62.5764375,
+        "transcribe": 10.082683541,
+        "summarize": 11.582628041
+      },
+      "memory": {
+        "peak_footprint": 1002818560,
+        "footprint_before": 6832560,
+        "footprint_after_unload": 88408808
+      }
+    },
+    "zh-standup": {
+      "error_rate": 0.006802721088435374,
+      "seconds": {
+        "audio": 39.083,
+        "transcribe": 5.756012833,
+        "summarize": 9.940432
+      },
+      "memory": {
+        "peak_footprint": 1000213456,
+        "footprint_before": 5292440,
+        "footprint_after_unload": 86704824
+      }
+    },
+    "zh-support": {
+      "error_rate": 0.007936507936507936,
+      "seconds": {
+        "audio": 64.7165625,
+        "transcribe": 9.678978917,
+        "summarize": 11.160808834000001
+      },
+      "memory": {
+        "peak_footprint": 1004997608,
+        "footprint_before": 6947248,
+        "footprint_after_unload": 88556216
       }
     },
     "zh-weekly": {
