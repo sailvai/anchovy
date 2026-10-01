@@ -25,5 +25,6 @@ npm run verify
 
 - In meetings that mix Chinese and English, the transcript sometimes writes Chinese speech as English, and the notes may translate decisions and action items into the other language.
 - Decisions and action items can include things that were only mentioned, such as a status update, a problem someone described, or a question, and they can miss some. Check them against the transcript, which is in the same note.
+- Writing notes for a long meeting needs several gigabytes of free memory. If other apps are using too much, for example a browser or a video call, Anchovy says there is not enough memory and does not write the note. Close some apps, then choose Retry. The recording is kept. The transcript is not, so Retry transcribes the meeting again.
 
 Sailvai is the company. Anchovy is its first product.
