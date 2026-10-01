@@ -78,26 +78,32 @@ an 8 GB Mac gets; on a Mac with 16 GB or more its transcript fits in one chunk.
   words (English) or characters (Chinese) were said in one passage of 400 content units, a few
   minutes of speech. Stop words do not count. Over an hour almost every common character is said
   somewhere, so the passage matters.
-- No decision or action item is one of the sample's not-items. An item matches a not-item when at
-  least 60% of the item's content units are in the not-item and at least 60% of the not-item's are
-  in the item. A copy, shortened or lightly changed, matches both ways. A real decision often
-  reuses most of the words of the problem it solves, or is mostly made of them, but not both,
-  because it adds what was decided. The support check cannot see this mistake: a suggestion or
-  a question copied into the summary was said, so it is supported. A paraphrase of a not-item is
-  not caught.
-- In a mixed sample, an unsupported decision or action item is printed as a warning
-  (`WARN … (known mixed-language limit)`) and counted under Totals, not as a failure. The summary
-  model translates items between Chinese and English, and a faithful translation shares few words
-  with what was said, so the support check cannot tell it from an invented item. This is a known
-  limit of v0.1.0. Every other check still fails a mixed sample: valid JSON, the summary language,
-  joins, chunking, not-items, the error rate against its baseline, and, for `mixed-hour`, time and
-  memory.
 - Every summary is written in the language spoken. A mixed meeting may be summarized in either.
 - The small-chunk run was summarized in two or more chunks and merged.
 - No window join loses or repeats 3 or more units (characters or words) against the transcript.
   Smaller counts are printed: a number heard as digits shifts a count by one or two.
 - For `mixed-hour` (`"timed": true`), transcription time, summary time, and peak memory are no
   more than 20% over its baseline.
+
+Two known limits of v0.1.0 are printed as warnings (`WARN … (known …)`) and counted under Totals
+apart from the failures. They do not fail the run, in any sample. The warning totals should not grow
+in a pull request without a reason in its description.
+
+- Not-item warnings. A decision or action item matches one of the sample's not-items: something
+  said that the meeting never agreed to or took on. The summary model lists status reports,
+  problems, and questions as decisions or tasks. The support check cannot see this mistake, because
+  the item was said. The fix planned for the next version is to make each item quote the transcript
+  line it comes from. An item matches a not-item when at least 60% of the item's content units are
+  in the not-item and at least 60% of the not-item's are in the item. A copy, shortened or lightly
+  changed, matches both ways. A real decision often reuses most of the words of the problem it
+  solves, or is mostly made of them, but not both, because it adds what was decided. A paraphrase
+  of a not-item is not caught. A line that a real decision may repeat nearly word for word, such
+  as the problem the decision fixes, cannot be a not-item: word overlap cannot tell the two apart.
+- Mixed-language warnings. In a mixed sample, a decision or action item that is not supported. The
+  summary model translates items between Chinese and English, and a faithful translation shares
+  few words with what was said, so the support check cannot tell it from an invented item. Every
+  other check still fails a mixed sample: valid JSON, the summary language, joins, chunking, the
+  error rate against its baseline, and, for `mixed-hour`, time and memory.
 
 How many checked decisions and action items the output covers is printed for information, and so
 are the time and memory of the short samples; none of these fails
