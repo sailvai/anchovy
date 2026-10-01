@@ -8,5 +8,9 @@
   "action_items": [
     "Maria fixes both issues by Wednesday: the wrong duration in the list after stopping a recording, and the hard-to-read delete button text in dark mode.",
     "Test the summary model again next week with shorter chunks."
+  ],
+  "not_items": [
+    "The installer was built yesterday, and testing found two issues.",
+    "It works, but it's slow, about two minutes per note."
   ]
 }

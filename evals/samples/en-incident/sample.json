@@ -11,5 +11,11 @@
     "Tessa turns off the default empty file setting this afternoon, and Aman reviews it.",
     "Aman builds the hourly feed check by the end of next week.",
     "Karen writes the line for the release notes."
+  ],
+  "not_items": [
+    "I want to understand why the old address answered at all.",
+    "Shouldn't it have returned an error?",
+    "So about six hours. How many people were affected?",
+    "Which is worse than an error, because nothing looked wrong."
   ]
 }

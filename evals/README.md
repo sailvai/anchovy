@@ -15,8 +15,12 @@ Each folder in `samples/` has:
   lists, such as `Flo (Chinese (China mainland))`. The eval stops if a voice is not installed,
   because `say` would otherwise read with a default voice without saying so.
 - `sample.json`: the language (`zh`, `en`, or `mixed`), the voice when there is one, the
-  background noise when there is some, and the checked decisions and action items, worded as they
-  were said.
+  background noise when there is some, the checked decisions and action items, worded as they
+  were said, and `not_items`: things said in the meeting that must not come back as a decision or
+  an action item. A not-item is a suggestion or proposal nobody agreed to, a question, an
+  opinion, a status report, a problem description, or chit-chat such as "Fine with me.". Each is
+  one sentence or clause copied word for word from the script. A suggestion the meeting later
+  agreed to is a decision, not a not-item.
 
 The audio is synthetic speech made on the Mac at eval time with `say` and `afconvert`, as 48 kHz
 16-bit mono WAV, the app's recording format (`scripts/eval-audio.mjs`). Turns are joined with 0.6
@@ -80,6 +84,26 @@ an 8 GB Mac gets; on a Mac with 16 GB or more its transcript fits in one chunk.
   Smaller counts are printed: a number heard as digits shifts a count by one or two.
 - For `mixed-hour` (`"timed": true`), transcription time, summary time, and peak memory are no
   more than 20% over its baseline.
+
+Two known limits of v0.1.0 are printed as warnings (`WARN … (known …)`) and counted under Totals
+apart from the failures. They do not fail the run, in any sample. The warning totals should not grow
+in a pull request without a reason in its description.
+
+- Not-item warnings. A decision or action item matches one of the sample's not-items: something
+  said that the meeting never agreed to or took on. The summary model lists status reports,
+  problems, and questions as decisions or tasks. The support check cannot see this mistake, because
+  the item was said. The fix planned for the next version is to make each item quote the transcript
+  line it comes from. An item matches a not-item when at least 60% of the item's content units are
+  in the not-item and at least 60% of the not-item's are in the item. A copy, shortened or lightly
+  changed, matches both ways. A real decision often reuses most of the words of the problem it
+  solves, or is mostly made of them, but not both, because it adds what was decided. A paraphrase
+  of a not-item is not caught. A line that a real decision may repeat nearly word for word, such
+  as the problem the decision fixes, cannot be a not-item: word overlap cannot tell the two apart.
+- Mixed-language warnings. In a mixed sample, a decision or action item that is not supported. The
+  summary model translates items between Chinese and English, and a faithful translation shares
+  few words with what was said, so the support check cannot tell it from an invented item. Every
+  other check still fails a mixed sample: valid JSON, the summary language, joins, chunking, the
+  error rate against its baseline, and, for `mixed-hour`, time and memory.
 
 How many checked decisions and action items the output covers is printed for information, and so
 are the time and memory of the short samples; none of these fails

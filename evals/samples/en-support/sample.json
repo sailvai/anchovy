@@ -10,5 +10,10 @@
     "Moira fixes the failure message by next Wednesday.",
     "Rishi builds the show in Finder button this week.",
     "Publish the microphone help page tomorrow."
+  ],
+  "not_items": [
+    "About half of them ask where the notes are saved.",
+    "And a few people say that recordings longer than two hours never get a note.",
+    "The Mac runs out of memory and the summary model fails to load."
   ]
 }

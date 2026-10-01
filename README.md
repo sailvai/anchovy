@@ -21,4 +21,9 @@ To run every check, as CI does:
 npm run verify
 ```
 
+## Known limits
+
+- In meetings that mix Chinese and English, the transcript sometimes writes Chinese speech as English, and the notes may translate decisions and action items into the other language.
+- Decisions and action items can include things that were only mentioned, such as a status update, a problem someone described, or a question, and they can miss some. Check them against the transcript, which is in the same note.
+
 Sailvai is the company. Anchovy is its first product.

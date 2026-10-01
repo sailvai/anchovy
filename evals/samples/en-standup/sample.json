@@ -4,5 +4,10 @@
   "action_items": [
     "Karen helps Daniel with the folder picker tests today.",
     "Send the designer a message about the icons this afternoon."
+  ],
+  "not_items": [
+    "Yesterday I finished the folder picker.",
+    "I'm blocked on the new icons.",
+    "The designer is away until Wednesday, so I can't finish the sidebar."
   ]
 }

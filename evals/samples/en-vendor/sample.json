@@ -5,5 +5,9 @@
   "action_items": [
     "Aman sends the renewal form to finance by Friday.",
     "Ralph puts a reminder in the calendar for ten months from now to compare services again."
+  ],
+  "not_items": [
+    "Our current plan ends next month and the price is going up by forty percent.",
+    "The cheaper one doesn't support notarization, so it's no use to us."
   ]
 }

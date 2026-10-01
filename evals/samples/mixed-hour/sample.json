@@ -21,5 +21,11 @@
     "王磊 this week 写一个 memory 的 benchmark，周四的 standup 上给大家看结果。",
     "陈静整理前五十条用户反馈，下周一发到群里。",
     "Sam will write the test plan for the one hour recording check by Friday."
+  ],
+  "not_items": [
+    "Maybe later we can add a person who reads a few summaries each release.",
+    "有人觉得摘要太短，有人觉得太长。",
+    "有用户问能不能支持粤语和日语。",
+    "Should design documents also go into the repository?"
   ]
 }

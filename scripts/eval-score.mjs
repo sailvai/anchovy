@@ -99,6 +99,63 @@ export function support(item, transcript, language) {
 // An item counts as supported when at least this share of it was said.
 export const SUPPORT_THRESHOLD = 0.6;
 
+// Share of `text`'s content units that are also in `other`.
+export function overlap(text, other, language) {
+  const wanted = contentUnits(text, language);
+  if (wanted.length === 0) return 1;
+  const there = new Set(contentUnits(other, language));
+  return wanted.filter((unit) => there.has(unit)).length / wanted.length;
+}
+
+// An item is a not-item (something said that the meeting never agreed to or
+// took on) when at least this share of each one's content units is in the
+// other. A copy, shortened or lightly changed, matches both ways. A real
+// decision often reuses most of the words of the problem it solves, or is
+// mostly made of them, but not both, because it adds what was decided.
+export const NOT_ITEM_MATCH = 0.6;
+
+export function isNotItem(item, notItem, language) {
+  return (
+    overlap(item, notItem, language) >= NOT_ITEM_MATCH &&
+    overlap(notItem, item, language) >= NOT_ITEM_MATCH
+  );
+}
+
+const notKind = { decision: "Not a decision", "action item": "Not an action item" };
+
+// Judges a summary's decisions and action items (`{ kind, text }`) against
+// a sample. Each must be supported by the transcript; an unsupported item is
+// a problem. Two known limits of v0.1.0 are warnings instead, counted apart:
+// - `warnings`: an unsupported item in a mixed sample. The model translates
+//   items between Chinese and English, and a faithful translation fails a
+//   word-overlap check.
+// - `notItems`: an item that matches one of the sample's not-items. The
+//   summary model lists status reports, problems, and questions as
+//   decisions or tasks.
+export function judgeItems(items, sample) {
+  const problems = [];
+  const warnings = [];
+  const notItems = [];
+  const judged = items.map((item) => {
+    const notItem = (sample.not_items ?? []).find((line) =>
+      isNotItem(item.text, line, sample.language),
+    );
+    if (notItem) {
+      notItems.push(
+        `${notKind[item.kind]} (said in the meeting, never agreed or taken on): "${item.text}" matches "${notItem}" (known limit: status reports and problems listed as decisions or tasks)`,
+      );
+    }
+    const said = support(item.text, sample.transcript, sample.language);
+    if (said < SUPPORT_THRESHOLD) {
+      const unsupported = `Unsupported ${item.kind} (${percent(said)} said): ${item.text}`;
+      if (sample.language === "mixed") warnings.push(`${unsupported} (known mixed-language limit)`);
+      else problems.push(unsupported);
+    }
+    return { ...item, support: said, notItem };
+  });
+  return { items: judged, problems, warnings, notItems };
+}
+
 // How many checked items some output item covers, for information.
 export function covered(checked, items, language) {
   return checked.filter((expected) =>

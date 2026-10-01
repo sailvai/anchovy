@@ -92,7 +92,7 @@ impl Summarizer for RecordingSummarizer {
 
     fn complete(&mut self, prompt: &Prompt, attempt: u32) -> Result<String, EngineError> {
         let text = self.inner.complete(prompt, attempt)?;
-        let merge = summary::merge_prompt(None, &[]).user;
+        let merge = summary::merge_prompt(None, &[], &[]).user;
         self.answers.lock().unwrap().push(Answer {
             kind: if prompt.user.starts_with(&merge) {
                 "merge"
