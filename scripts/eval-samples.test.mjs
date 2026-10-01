@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 import { NOISE_TYPES, parseScript } from "./eval-audio.mjs";
-import { support, SUPPORT_THRESHOLD } from "./eval-score.mjs";
+import { isNotItem, judgeItems, support, SUPPORT_THRESHOLD } from "./eval-score.mjs";
 
 const samplesDir = path.resolve(import.meta.dirname, "..", "evals", "samples");
 
@@ -34,6 +34,40 @@ describe.each(readdirSync(samplesDir).sort())("eval sample %s", (id) => {
         support: expect.toSatisfy((s) => s >= SUPPORT_THRESHOLD),
       });
     }
+  });
+
+  // Not-items: things said in the meeting that are not decisions or action
+  // items, such as a suggestion nobody agreed to, a question, or a status
+  // report. They are copied from the script, word for word.
+  test("not-items, when there are some, are copied from what was said", () => {
+    if (sample.not_items === undefined) return;
+    expect(sample.not_items.length).toBeGreaterThan(0);
+    for (const notItem of sample.not_items) {
+      expect({ notItem, said: sample.transcript.includes(notItem) }).toEqual({
+        notItem,
+        said: true,
+      });
+      expect(support(notItem, sample.transcript, sample.language)).toBeGreaterThanOrEqual(
+        SUPPORT_THRESHOLD,
+      );
+    }
+  });
+
+  test("no not-item matches a checked decision or action item", () => {
+    const clashes = (sample.not_items ?? []).flatMap((notItem) =>
+      [...sample.decisions, ...sample.action_items]
+        .filter((item) => isNotItem(item, notItem, sample.language))
+        .map((item) => ({ notItem, item })),
+    );
+    expect(clashes).toEqual([]);
+  });
+
+  test("an unsupported item fails the run, except in a mixed sample", () => {
+    const made_up = [{ kind: "action item", text: "Xavier orders twelve violins 鲸鱼" }];
+    const { problems, warnings } = judgeItems(made_up, sample);
+    expect({ problems: problems.length, warnings: warnings.length }).toEqual(
+      sample.language === "mixed" ? { problems: 0, warnings: 1 } : { problems: 1, warnings: 0 },
+    );
   });
 
   test("a sample with a script has several speakers", () => {
@@ -90,6 +124,26 @@ describe("the hour-long sample", () => {
     expect(items.some((item) => han.test(item) && !latin.test(item))).toBe(true);
     expect(items.some((item) => latin.test(item) && !han.test(item))).toBe(true);
     expect(items.some((item) => han.test(item) && latin.test(item))).toBe(true);
+  });
+});
+
+// The mistakes found in plan step 6e: an invented task, and a question and
+// status reports listed as items.
+describe("known summary mistakes", () => {
+  test("an invented task is not supported", () => {
+    const offsite = load("zh-offsite");
+    expect(
+      support("确认下个月第二个周六的天气情况，以便应对下雨情况", offsite.transcript, "zh"),
+    ).toBeLessThan(SUPPORT_THRESHOLD);
+  });
+
+  test("a question and status reports copied as items are not-items", () => {
+    const caught = (id, item) =>
+      load(id).not_items.some((notItem) => isNotItem(item, notItem, load(id).language));
+    expect(caught("en-incident", "Investigate why the old address answered at all")).toBe(true);
+    expect(caught("zh-standup", "我昨天把设置页面的开关都接上了，今天先测试")).toBe(true);
+    expect(caught("mixed-launch", "Fine with me.")).toBe(true);
+    expect(caught("mixed-sync", "我们先用中文说一下，然后请 Daniel 讲他那边的情况。")).toBe(true);
   });
 });
 

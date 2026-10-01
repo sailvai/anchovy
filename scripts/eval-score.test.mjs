@@ -7,7 +7,11 @@ import {
   covered,
   matches,
   errorRate,
+  isNotItem,
+  judgeItems,
   languageOf,
+  NOT_ITEM_MATCH,
+  overlap,
   support,
   summaryCalls,
   SUPPORT_THRESHOLD,
@@ -63,6 +67,124 @@ describe("support", () => {
     const items = ["Maria fixes the two issues by Wednesday.", "Tom orders the Mac today."];
     expect(covered(["Maria fixes both issues by Wednesday."], items, "en")).toBe(1);
     expect(covered(["Priya updates the design by Thursday."], items, "en")).toBe(0);
+  });
+});
+
+// Lines from the samples' scripts, and items the model wrote for them.
+describe("not-items", () => {
+  const question = "I want to understand why the old address answered at all.";
+  const status = "我昨天把设置页面的开关都接上了";
+  const blocked = "我这边卡在签名证书上，申请还没批下来，所以今天没法打包。";
+  const opening = "我们先用中文说一下，然后请 Daniel 讲他那边的情况。";
+
+  test("overlap is the share of one text's content units found in the other", () => {
+    expect(overlap("Fine with me.", "Fine with me.", "en")).toBe(1);
+    expect(overlap("Investigate why the old address answered at all", question, "en")).toBe(0.75);
+    expect(overlap(question, "Investigate why the old address answered at all", "en")).toBe(0.6);
+    expect(overlap("Ship it.", "我们周五发布。", "mixed")).toBe(0);
+  });
+
+  test("a verbatim copy matches", () => {
+    expect(isNotItem(question, question, "en")).toBe(true);
+    expect(isNotItem("Fine with me.", "Fine with me.", "en")).toBe(true);
+    expect(isNotItem(status, status, "zh")).toBe(true);
+    expect(isNotItem(opening, opening, "mixed")).toBe(true);
+  });
+
+  test("a shortened or lightly changed copy matches", () => {
+    expect(isNotItem("Understand why the old address answered at all.", question, "en")).toBe(true);
+    expect(isNotItem("Investigate why the old address answered at all", question, "en")).toBe(true);
+    expect(isNotItem("昨天设置页面的开关接上了", status, "zh")).toBe(true);
+    expect(isNotItem("我昨天把设置页面的开关都接上了，今天先测试", status, "zh")).toBe(true);
+    expect(isNotItem("我这边卡在签名证书上，申请还没批下来，所以今天没", blocked, "zh")).toBe(true);
+    expect(isNotItem("先用中文说一下，然后请 Daniel 讲情况", opening, "mixed")).toBe(true);
+  });
+
+  test("an unrelated item does not match", () => {
+    expect(isNotItem("Tessa turns off the default empty file setting.", question, "en")).toBe(
+      false,
+    );
+    expect(isNotItem("打包先往后放一天。", blocked, "zh")).toBe(false);
+    expect(isNotItem("Daniel will change the date format this week.", opening, "mixed")).toBe(
+      false,
+    );
+  });
+
+  // Both directions must reach the line. A real item often reuses most of a
+  // not-item's words (the problem it solves), or is mostly made of them, but
+  // not both: it adds what was decided.
+  test("a real decision that reuses words of a not-item does not match", () => {
+    const blocking = "但是按钮放在正中间，会挡住下面的录音列表。";
+    const decision = "按钮放在中间，列表往下移一点。";
+    expect(overlap(decision, blocking, "zh")).toBeGreaterThanOrEqual(NOT_ITEM_MATCH);
+    expect(isNotItem(decision, blocking, "zh")).toBe(false);
+
+    const problem = "The screenshots in the store were also out of date for a week.";
+    const rule = "The store screenshots get updated in the same week as the release.";
+    expect(overlap(problem, rule, "en")).toBeGreaterThanOrEqual(NOT_ITEM_MATCH);
+    expect(isNotItem(rule, problem, "en")).toBe(false);
+
+    const request =
+      "On my side, users in London are asking for the date to be written the British way in the note title.";
+    expect(
+      isNotItem("Follow the system setting for the date in the note title.", request, "mixed"),
+    ).toBe(false);
+  });
+
+  test("a paraphrase is not caught; only copies are", () => {
+    expect(isNotItem("我继续跟进签名证书申请的审批进度", blocked, "zh")).toBe(false);
+  });
+});
+
+describe("judging items", () => {
+  const transcript =
+    "我们周五发布。Daniel: I think we should test on an older Mac. Fine with me. 王磊周三之前改完。";
+  const sample = (language) => ({
+    language,
+    transcript,
+    not_items: ["I think we should test on an older Mac.", "Fine with me."],
+  });
+  const items = [
+    { kind: "decision", text: "我们周五发布。" },
+    { kind: "decision", text: "Fine with me." },
+    { kind: "action item", text: "Tom buys three new monitors" },
+    { kind: "action item", text: "Test on an older Mac" },
+  ];
+
+  test("unsupported items and not-items fail a Chinese or English sample", () => {
+    const { problems, warnings } = judgeItems(items, sample("en"));
+    expect(warnings).toEqual([]);
+    expect(problems).toEqual([
+      'Not a decision (said in the meeting, never agreed or taken on): "Fine with me." matches "Fine with me."',
+      "Unsupported action item (0.0% said): Tom buys three new monitors",
+      'Not an action item (said in the meeting, never agreed or taken on): "Test on an older Mac" matches "I think we should test on an older Mac."',
+    ]);
+  });
+
+  test("in a mixed sample unsupported items are warnings, and not-items still fail", () => {
+    const { problems, warnings } = judgeItems(items, sample("mixed"));
+    expect(warnings).toEqual([
+      "Unsupported action item (0.0% said): Tom buys three new monitors (known mixed-language limit)",
+    ]);
+    expect(problems).toEqual([
+      'Not a decision (said in the meeting, never agreed or taken on): "Fine with me." matches "Fine with me."',
+      'Not an action item (said in the meeting, never agreed or taken on): "Test on an older Mac" matches "I think we should test on an older Mac."',
+    ]);
+  });
+
+  test("each item keeps its support for the report", () => {
+    const judged = judgeItems(items, sample("zh"));
+    expect(judged.items.map((item) => item.support)).toEqual([
+      1,
+      1,
+      support("Tom buys three new monitors", transcript, "zh"),
+      support("Test on an older Mac", transcript, "zh"),
+    ]);
+  });
+
+  test("a sample without not-items is judged on support alone", () => {
+    const { problems } = judgeItems(items.slice(0, 1), { language: "zh", transcript });
+    expect(problems).toEqual([]);
   });
 });
 
