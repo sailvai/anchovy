@@ -9,7 +9,7 @@ Free, open-source meeting notes for Apple Silicon Macs. Record your microphone a
 - Press Record. Anchovy records your microphone and the sound your Mac is playing into one audio file.
 - When the recording stops, Anchovy transcribes it and writes a summary, decisions, and action items. Both steps run on your Mac.
 - The note is a Markdown file saved in the same folder as the audio, inside the notes folder you chose. Any tool that reads Markdown can open it, and the notes folder can be an Obsidian vault.
-- When a Zoom, Google Meet, or Microsoft Teams meeting starts, Anchovy asks whether to record it. It records only if you choose Record.
+- When a Zoom or Teams meeting starts, Anchovy asks whether to record it. If a browser starts using the microphone, Anchovy says a call may have started in that browser. It records only if you choose Record.
 
 ## What it runs on
 
