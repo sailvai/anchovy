@@ -20,6 +20,7 @@
     "check:ui-text": "node scripts/check-ui-text.mjs",
     "verify": "node scripts/verify.mjs",
     "verify:device": "node scripts/verify-device.mjs",
+    "verify:live": "node scripts/verify-live.mjs",
     "eval": "node scripts/eval.mjs"
   },
   "dependencies": {

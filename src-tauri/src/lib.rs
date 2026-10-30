@@ -3,11 +3,12 @@
 //! (the shipped list and downloads), the recording module, first launch
 //! (the notes folder bookmark and permissions), the engines that run the
 //! models, the pipeline from a recording to its note, the meeting prompt,
-//! and the settings.
+//! the settings, and the live transcript.
 
 pub mod engines;
 pub mod folder_access;
 pub mod library;
+pub mod live;
 pub mod m4a;
 pub mod meetings;
 pub mod models;
