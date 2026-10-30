@@ -54,18 +54,153 @@ impl Default for Params {
 }
 
 pub struct Segmenter {
-    _params: Params,
+    /// Samples per frame.
+    frame: usize,
+    floor_frames: usize,
+    /// Root mean square ratio of `sound_db`.
+    sound_ratio: f64,
+    end_silence_frames: usize,
+    min_sound: usize,
+    max_phrase: usize,
+    pad: usize,
+    /// Samples of a frame not yet complete.
+    pending: Vec<f32>,
+    /// Samples in complete frames so far.
+    fed: usize,
+    /// Root mean square of the recent frames, newest last.
+    recent: VecDeque<f64>,
+    /// The last `pad` samples before an open phrase, to start it with.
+    before: VecDeque<f32>,
+    open: Option<Open>,
+}
+
+/// A phrase still being spoken.
+struct Open {
+    start: usize,
+    samples: Vec<f32>,
+    first_sound: usize,
+    voice_end: usize,
+    silent_frames: usize,
 }
 
 impl Segmenter {
     pub fn new(params: Params) -> Self {
-        Segmenter { _params: params }
+        let rate = f64::from(MODEL_RATE);
+        let samples = |seconds: f64| (seconds * rate).round() as usize;
+        let frame = samples(params.frame_seconds).max(1);
+        let frames = |seconds: f64| (samples(seconds) / frame).max(1);
+        Segmenter {
+            frame,
+            floor_frames: frames(params.floor_seconds),
+            sound_ratio: 10f64.powf(params.sound_db / 20.0),
+            end_silence_frames: frames(params.end_silence_seconds),
+            min_sound: samples(params.min_sound_seconds),
+            max_phrase: samples(params.max_phrase_seconds),
+            pad: samples(params.pad_seconds),
+            pending: Vec::with_capacity(frame),
+            fed: 0,
+            recent: VecDeque::new(),
+            before: VecDeque::new(),
+            open: None,
+        }
     }
 
     /// Feeds the next samples and returns every phrase they finished.
-    pub fn push(&mut self, _samples: &[f32]) -> Vec<Phrase> {
-        Vec::new()
+    pub fn push(&mut self, samples: &[f32]) -> Vec<Phrase> {
+        let mut done = Vec::new();
+        for &sample in samples {
+            self.pending.push(sample);
+            if self.pending.len() == self.frame {
+                let frame = std::mem::take(&mut self.pending);
+                done.extend(self.frame_in(&frame));
+                self.pending = frame;
+                self.pending.clear();
+            }
+        }
+        done
     }
+
+    fn frame_in(&mut self, frame: &[f32]) -> Option<Phrase> {
+        let at = self.fed;
+        self.fed += frame.len();
+        let level = rms(frame);
+        self.recent.push_back(level);
+        if self.recent.len() > self.floor_frames {
+            self.recent.pop_front();
+        }
+        let floor = self.recent.iter().copied().fold(f64::INFINITY, f64::min);
+        let sound = level > (floor * self.sound_ratio).max(f64::from(SILENCE_RMS));
+
+        let Some(open) = self.open.as_mut() else {
+            if sound {
+                let mut samples: Vec<f32> = self.before.drain(..).collect();
+                samples.extend_from_slice(frame);
+                self.open = Some(Open {
+                    start: at + frame.len() - samples.len(),
+                    samples,
+                    first_sound: at,
+                    voice_end: at + frame.len(),
+                    silent_frames: 0,
+                });
+            } else {
+                self.keep_before(frame);
+            }
+            return None;
+        };
+
+        open.samples.extend_from_slice(frame);
+        if sound {
+            open.voice_end = at + frame.len();
+            open.silent_frames = 0;
+        } else {
+            open.silent_frames += 1;
+        }
+        if open.samples.len() >= self.max_phrase {
+            // Too long: end here. What follows starts a new phrase, without
+            // repeating any of this one.
+            let open = self.open.take()?;
+            self.before.clear();
+            return Some(Phrase {
+                start: open.start,
+                voice_end: open.voice_end,
+                cut: self.fed,
+                samples: open.samples,
+            });
+        }
+        if open.silent_frames < self.end_silence_frames {
+            return None;
+        }
+        let mut open = self.open.take()?;
+        let tail = open.samples.len().saturating_sub(self.pad);
+        for &sample in &open.samples[tail..] {
+            self.before.push_back(sample);
+        }
+        let keep = (open.voice_end + self.pad).min(self.fed) - open.start;
+        open.samples.truncate(keep);
+        let long_enough = open.voice_end - open.first_sound >= self.min_sound;
+        let loud_enough = rms(&open.samples) >= f64::from(SILENCE_RMS);
+        (long_enough && loud_enough).then_some(Phrase {
+            start: open.start,
+            voice_end: open.voice_end,
+            cut: self.fed,
+            samples: open.samples,
+        })
+    }
+
+    fn keep_before(&mut self, frame: &[f32]) {
+        self.before.extend(frame);
+        while self.before.len() > self.pad {
+            self.before.pop_front();
+        }
+    }
+}
+
+fn rms(samples: &[f32]) -> f64 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    let power: f64 = samples.iter().map(|&s| f64::from(s) * f64::from(s)).sum();
+    (power / samples.len() as f64).sqrt()
 }
 
 #[cfg(test)]
@@ -199,14 +334,15 @@ mod tests {
 
     #[test]
     fn continuous_sound_ends_at_30_seconds() {
-        let audio = join(&[syllables(31.0), silence(1.0)]);
+        // The silence first gives the noise floor something to start from.
+        let audio = join(&[silence(1.0), syllables(31.0), silence(1.0)]);
         let found = phrases(&audio);
         assert_eq!(found.len(), 2);
-        assert_eq!(found[0].start, 0);
-        assert_eq!(found[0].cut, at(30.0));
+        assert_eq!(found[0].start, at(0.8));
+        assert_eq!(found[0].cut, at(30.8));
         assert_eq!(found[0].samples.len(), at(30.0));
-        assert_eq!(found[1].start, at(30.0), "the rest is not heard twice");
-        assert_eq!(found[1].voice_end, at(31.0));
+        assert_eq!(found[1].start, at(30.8), "the rest is not heard twice");
+        assert_eq!(found[1].voice_end, at(32.0));
     }
 
     #[test]

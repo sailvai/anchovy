@@ -7,7 +7,9 @@ import {
   checkSentenceList,
   layOut,
   LIMIT_SECONDS,
+  hasVoice,
   median,
+  runningApps,
   scoreRun,
   scriptOf,
   SENTENCE_GAP_SECONDS,
@@ -208,5 +210,29 @@ describe("median", () => {
     expect(median([3, 1, 2])).toBe(2);
     expect(median([4, 1, 2, 3])).toBe(2.5);
     expect(median([])).toBeNull();
+  });
+});
+
+describe("runningApps", () => {
+  it("finds the watched apps by their executable name", () => {
+    const listing = [
+      "/Applications/zoom.us.app/Contents/MacOS/zoom.us",
+      "/Applications/Safari.app/Contents/MacOS/Safari",
+      "/System/Library/PrivateFrameworks/SafariSafeBrowsing.framework/com.apple.Safari.SafeBrowsing.Service",
+      "/usr/sbin/cfprefsd",
+    ].join("\n");
+    expect(runningApps(listing)).toEqual(["Zoom", "Safari"]);
+    expect(runningApps("/usr/sbin/cfprefsd\n")).toEqual([]);
+  });
+});
+
+describe("hasVoice", () => {
+  it("accepts the voice by its short name or its full listed name", () => {
+    const installed = ["Tingting (Chinese (China mainland))", "Samantha (English (US))", "Flo"];
+    expect(hasVoice(installed, "Tingting")).toBe(true);
+    expect(hasVoice(installed, "Samantha")).toBe(true);
+    expect(hasVoice(installed, "Flo")).toBe(true);
+    expect(hasVoice(installed, "Ting")).toBe(false);
+    expect(hasVoice(installed, "Meijia")).toBe(false);
   });
 });

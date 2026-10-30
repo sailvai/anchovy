@@ -83,6 +83,6 @@
     "id": "en-long",
     "lang": "en",
     "long": true,
-    "text": "I want to walk everyone through the whole timeline for the migration project because the database work has to finish before the new storage system goes live and the storage team cannot start their testing until the network changes are done and approved by the security group which usually takes about two weeks so we really need to plan every step of this very carefully starting today"
+    "text": "I want to walk everyone through the whole timeline for the migration project because the database work has to finish before the new storage system goes live and the storage team cannot start their testing until the network changes are done and approved by the security group which usually takes about two weeks so we really need to plan every step of this very carefully starting today and make sure that every team knows exactly who is responsible for each part of the work before the end of this week"
   }
 ]
