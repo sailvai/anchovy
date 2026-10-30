@@ -1,0 +1,88 @@
+[
+  { "id": "zh-01", "lang": "zh", "text": "好的，没问题。" },
+  { "id": "en-01", "lang": "en", "text": "Sounds good to me." },
+  { "id": "zh-02", "lang": "zh", "text": "我们下周三再开一次会。" },
+  { "id": "en-02", "lang": "en", "text": "Let's meet again next Wednesday." },
+  { "id": "zh-03", "lang": "zh", "text": "这个方案我觉得可以先试一下。" },
+  { "id": "en-03", "lang": "en", "text": "I think we should try this approach first." },
+  { "id": "zh-04", "lang": "zh", "text": "预算的事情要等财务那边确认以后再定。" },
+  {
+    "id": "en-04",
+    "lang": "en",
+    "text": "We need to wait for finance to confirm the budget before we decide."
+  },
+  { "id": "zh-05", "lang": "zh", "text": "请大家在周五之前把各自负责的部分整理好，发到群里。" },
+  {
+    "id": "en-05",
+    "lang": "en",
+    "text": "Please send your part of the report to the group by Friday afternoon."
+  },
+  {
+    "id": "zh-06",
+    "lang": "zh",
+    "text": "上个月的用户反馈里，大部分人都提到了加载太慢的问题，我们需要优先处理。"
+  },
+  {
+    "id": "en-06",
+    "lang": "en",
+    "text": "Most of the feedback from last month was about slow loading, so that should be our top priority for the next sprint."
+  },
+  {
+    "id": "zh-07",
+    "lang": "zh",
+    "text": "测试环境昨天晚上又出了一次故障，运维同事已经在查原因，估计今天下午能有结论。"
+  },
+  {
+    "id": "en-07",
+    "lang": "en",
+    "text": "The test server went down again last night and the operations team is still looking into it, but they expect to have an answer by this afternoon."
+  },
+  {
+    "id": "zh-08",
+    "lang": "zh",
+    "text": "新版本的发布时间暂时定在下个月十五号，如果中间遇到大的问题，我们再一起讨论要不要往后推。"
+  },
+  {
+    "id": "en-08",
+    "lang": "en",
+    "text": "We are planning to release the new version on the fifteenth of next month, and if we run into any big problems before then we can talk about moving the date."
+  },
+  {
+    "id": "zh-09",
+    "lang": "zh",
+    "text": "关于招聘，我们这个季度还需要两位后端工程师和一位设计师，人事部门说简历已经收到不少了，下周开始安排面试。"
+  },
+  {
+    "id": "en-09",
+    "lang": "en",
+    "text": "On hiring, we still need two backend engineers and one designer this quarter, and the recruiting team says interviews will start next week because they already have plenty of applications."
+  },
+  {
+    "id": "zh-10",
+    "lang": "zh",
+    "text": "我补充一点，客户上次开会的时候特别强调了数据安全，所以所有的资料都必须保存在本地，不能上传到任何外部的服务器，这一点请大家务必注意。"
+  },
+  {
+    "id": "en-10",
+    "lang": "en",
+    "text": "One more thing about the client, who was very clear in our last meeting that all of their data has to stay on their own machines and that nothing can be uploaded to an outside server, so please keep that in mind for every part of the project."
+  },
+  { "id": "zh-11", "lang": "zh", "text": "谢谢大家。" },
+  { "id": "en-11", "lang": "en", "text": "Thank you, everyone." },
+  {
+    "id": "zh-12",
+    "lang": "zh",
+    "text": "那我们今天就先到这里，会议纪要我晚一点整理好发给大家，有遗漏的地方请直接回复补充。"
+  },
+  {
+    "id": "en-12",
+    "lang": "en",
+    "text": "Okay, let's stop here for today, and I'll write up the notes later and send them around, so just reply if I missed anything."
+  },
+  {
+    "id": "en-long",
+    "lang": "en",
+    "long": true,
+    "text": "I want to walk everyone through the whole timeline for the migration project because the database work has to finish before the new storage system goes live and the storage team cannot start their testing until the network changes are done and approved by the security group which usually takes about two weeks so we really need to plan every step of this very carefully starting today"
+  }
+]
